@@ -617,7 +617,7 @@ textarea{min-height:74px;resize:vertical}
   <label class="fl">Acción tomada en terreno</label><textarea id="obs-accion" placeholder="Conversación, corrección inmediata..."></textarea>
   <div class="fbtn" onclick="document.getElementById('ofi').click()"><i class="ti ti-camera" style="font-size:21px"></i><span id="ofl">Adjuntar foto (opcional)</span></div>
   <div id="ofi2"></div>
-  <input type="file" id="ofi" accept="image/*" capture="environment" style="display:none" onchange="sFO(this)">
+  <input type="file" id="ofi" accept="image/*" style="display:none" onchange="sFO(this)">
   <button class="btn btn-orange" onclick="fObs()"><i class="ti ti-file-text"></i> Emitir informe PDF</button>
   <button class="btn btn-black" onclick="fObsSinPDF()"><i class="ti ti-device-floppy"></i> Guardar sin PDF</button>
   <button class="btn btn-sec" onclick="gt('s-home')">Cancelar</button>
@@ -785,7 +785,7 @@ textarea{min-height:74px;resize:vertical}
   <textarea id="hal-desc" placeholder="Describe la condición, evento o hallazgo detectado..." style="min-height:90px"></textarea>
   <div class="fbtn" onclick="document.getElementById('hal-foto-hallazgo').click()"><i class="ti ti-camera" style="font-size:20px"></i><span id="hal-foto-hallazgo-lbl">Adjuntar foto(s) del hallazgo</span></div>
   <div id="hal-foto-hallazgo-grid" style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:10px"></div>
-  <input type="file" id="hal-foto-hallazgo" accept="image/*" capture="environment" multiple style="display:none" onchange="onHalFoto('hallazgo',this)">
+  <input type="file" id="hal-foto-hallazgo" accept="image/*" multiple style="display:none" onchange="onHalFoto('hallazgo',this)">
 
   <div class="divider"></div>
 
@@ -793,7 +793,7 @@ textarea{min-height:74px;resize:vertical}
   <textarea id="hal-propuesta" placeholder="Medida o mejora propuesta para corregir/prevenir..." style="min-height:90px"></textarea>
   <div class="fbtn" onclick="document.getElementById('hal-foto-propuesta').click()"><i class="ti ti-camera" style="font-size:20px"></i><span id="hal-foto-propuesta-lbl">Adjuntar foto(s) de la propuesta (opcional)</span></div>
   <div id="hal-foto-propuesta-grid" style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:10px"></div>
-  <input type="file" id="hal-foto-propuesta" accept="image/*" capture="environment" multiple style="display:none" onchange="onHalFoto('propuesta',this)">
+  <input type="file" id="hal-foto-propuesta" accept="image/*" multiple style="display:none" onchange="onHalFoto('propuesta',this)">
 
   <button class="btn btn-orange" style="margin-top:10px" onclick="fHal()"><i class="ti ti-file-text"></i> Emitir informe PDF</button>
   <button class="btn btn-black" onclick="fHal(true)"><i class="ti ti-device-floppy"></i> Guardar sin PDF</button>
@@ -845,7 +845,7 @@ textarea{min-height:74px;resize:vertical}
     </select>
     <div class="fbtn" onclick="document.getElementById('ci-foto-input').click()"><i class="ti ti-camera" style="font-size:21px"></i><span id="ci-foto-lbl">Adjuntar foto</span></div>
     <div id="ci-foto-info"></div>
-    <input type="file" id="ci-foto-input" accept="image/*" capture="environment" style="display:none" onchange="sFCI(this)">
+    <input type="file" id="ci-foto-input" accept="image/*" style="display:none" onchange="sFCI(this)">
   </div>
 
   <!-- CAMPOS ACCION INSEGURA -->
@@ -876,7 +876,7 @@ textarea{min-height:74px;resize:vertical}
     </select>
     <div class="fbtn" onclick="document.getElementById('ai-foto-input').click()"><i class="ti ti-camera" style="font-size:21px"></i><span id="ai-foto-lbl">Adjuntar foto (opcional)</span></div>
     <div id="ai-foto-info"></div>
-    <input type="file" id="ai-foto-input" accept="image/*" capture="environment" style="display:none" onchange="sFAI(this)">
+    <input type="file" id="ai-foto-input" accept="image/*" style="display:none" onchange="sFAI(this)">
   </div>
 
   <!-- CAMPOS COMUNES GESTION -->
@@ -2099,7 +2099,7 @@ function rCL2(ck){
         <textarea id="obstxt${x}" placeholder="Observación para este ítem..." style="min-height:52px;margin-bottom:0;font-size:13px" oninput="cI.items[${x}].obs=this.value"></textarea>
       </div>
       <div id="fotofield${x}" style="display:none;margin-top:4px">
-        <input type="file" id="fotoinput${x}" accept="image/*" capture="environment" style="display:none" onchange="onFotoItem(${x},this)">
+        <input type="file" id="fotoinput${x}" accept="image/*" style="display:none" onchange="onFotoItem(${x},this)">
         <button class="btn-sm" style="width:100%" onclick="document.getElementById('fotoinput${x}').click()"><i class="ti ti-camera"></i> Tomar / seleccionar foto</button>
         <div id="fotoprev${x}"></div>
       </div>`;
@@ -2262,7 +2262,7 @@ function rNL(){
         <textarea id="co${i}" placeholder="Descripción adicional...">${n.com||''}</textarea>
         <div class="fbtn" onclick="document.getElementById('nf${i}').click()"><i class="ti ti-camera" style="font-size:20px"></i><span id="nfl${i}">${n.foto?'Foto adjunta':'Adjuntar foto'}</span></div>
         <div id="nfi${i}"></div>
-        <input type="file" id="nf${i}" accept="image/*" capture="environment" style="display:none" onchange="sFN(${i},this)">
+        <input type="file" id="nf${i}" accept="image/*" style="display:none" onchange="sFN(${i},this)">
         <button class="btn btn-orange" style="margin-top:4px" onclick="gNP(${i})"><i class="ti ti-check"></i> Guardar NC</button>
       </div>
     </div>`;
@@ -2456,7 +2456,7 @@ function rHN(){
         ${n.fotoVerif?`<div style="margin-bottom:10px"><img src="${n.fotoVerif}" style="max-width:100%;border-radius:9px;border:1px solid var(--border)"><div style="font-size:11px;color:var(--green);margin-top:3px">${n.tsVerif||''}</div></div>`:''}
         <div class="fbtn" onclick="document.getElementById('vf${gi}').click()"><i class="ti ti-camera" style="font-size:20px"></i><span id="vfl${gi}">${n.fotoVerif?'Cambiar foto':'Adjuntar foto de evidencia'}</span></div>
         <div id="vfi${gi}"></div>
-        <input type="file" id="vf${gi}" accept="image/*" capture="environment" style="display:none" onchange="gEv(${n._ri},${n._ni},${gi},this)">
+        <input type="file" id="vf${gi}" accept="image/*" style="display:none" onchange="gEv(${n._ri},${n._ni},${gi},this)">
         <button class="btn btn-orange" style="margin-top:4px" onclick="gCV(${n._ri},${n._ni},${gi})"><i class="ti ti-check"></i> Guardar</button>
         <button class="btn btn-sec" onclick="enviarInformePorCorreo(${n._ri})"><i class="ti ti-mail"></i> Enviar informe por correo</button>
       </div>
@@ -2622,7 +2622,27 @@ function rHI(){
 }
 
 function elInf(ri){db.splice(ri,1);sv();rHI();rH();}
-function rPDF(ri){const r=db[ri];if(!r)return;const t=r.tipo==='Caminata'?'caminata':(r.tipo==='Inspeccion'?(r.clKey==='001B'?'extintores':'inspeccion'):r.tipo==='Observacion'?'observacion':r.tipo==='CondicionInsegura'?'ci':'ai');gPDF(t,r);}
+// Única fuente de verdad para deducir qué plantilla de PDF corresponde a un
+// registro. Antes esta lógica estaba duplicada en rPDF() y en
+// enviarInformePorCorreo() con cadenas de ternarios distintas, y ambas
+// terminaban en ':'ai'' — así que cualquier tipo no contemplado (Hallazgo, y en
+// el caso del correo también Caminata y Extintores) se imprimía silenciosamente
+// con la plantilla de Acción Insegura, que lee campos que esos registros no
+// tienen (d.desc, d.actividadEjec...) y por eso salía todo en blanco.
+function tipoPDFde(r){
+  if(!r) return 'inspeccion';
+  switch(r.tipo){
+    case 'Inspeccion': return r.clKey==='001B'?'extintores':'inspeccion';
+    case 'Observacion': return 'observacion';
+    case 'CondicionInsegura': return 'ci';
+    case 'AccionInsegura': return 'ai';
+    case 'Caminata': return 'caminata';
+    case 'Hallazgo': return 'hallazgo';
+    default: return 'inspeccion';
+  }
+}
+
+function rPDF(ri){const r=db[ri];if(!r)return;gPDF(tipoPDFde(r),r);}
 
 // SHEETS
 let previewRi=null;
@@ -2798,8 +2818,7 @@ function enviarInformePorCorreo(ri){
   const r=db[ri];if(!r)return;
   const destinatario=prompt('Correo del destinatario:');
   if(!destinatario)return;
-  const t=r.tipo==='Inspeccion'?'inspeccion':r.tipo==='Observacion'?'observacion':r.tipo==='CondicionInsegura'?'ci':'ai';
-  const pdfBase64=generarPDFBase64(t,r);
+  const pdfBase64=generarPDFBase64(tipoPDFde(r),r);
   fetch(SHEETS_URL,{method:'POST',body:JSON.stringify({
     _action:'enviarPDF',
     destinatario,
@@ -3487,7 +3506,7 @@ function iCam() {
     html += '<textarea placeholder="Observacion..." style="min-height:48px;margin-bottom:0;font-size:13px" oninput="camItems[' + x + '].obs=this.value"></textarea>';
     html += '</div>';
     html += '<div id="camfoto' + x + '" style="display:none;margin-top:3px">';
-    html += '<input type="file" id="camfi' + x + '" accept="image/*" capture="environment" style="display:none" onchange="onCamFoto(' + x + ',this)">';
+    html += '<input type="file" id="camfi' + x + '" accept="image/*" style="display:none" onchange="onCamFoto(' + x + ',this)">';
     html += '<button class="btn-sm" style="width:100%" onclick="document.getElementById(`camfi' + x + '`).click()"><i class="ti ti-camera"></i> Tomar / seleccionar foto</button>';
     html += '<div id="camfp' + x + '"></div>';
     html += '</div></div>';
