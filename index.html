@@ -482,6 +482,7 @@ textarea{min-height:74px;resize:vertical}
     <button class="filter-btn" data-f="Inspeccion" onclick="setFiltroNC('Inspeccion',this)">Inspección</button>
     <button class="filter-btn" data-f="CondicionInsegura" onclick="setFiltroNC('CondicionInsegura',this)">CI/AI</button>
     <button class="filter-btn" data-f="Observacion" onclick="setFiltroNC('Observacion',this)">Observación</button>
+    <button class="filter-btn" data-f="Caminata" onclick="setFiltroNC('Caminata',this)">Caminata</button>
     <button class="filter-btn" data-f="abiertos" onclick="setFiltroNC('abiertos',this)">Abiertos</button>
     <button class="filter-btn" data-f="corregidos" onclick="setFiltroNC('corregidos',this)">Corregidos</button>
     <button class="filter-btn" data-f="cerrados" onclick="setFiltroNC('cerrados',this)">Cerrados</button>
@@ -1054,7 +1055,7 @@ function gt(id){
   document.querySelectorAll('.scr').forEach(e=>e.classList.remove('active'));
   document.getElementById(id).classList.add('active');
   window.scrollTo(0,0);
-  if(id==='s-home')rH();
+  if(id==='s-home'){rH();extMode=false;camMode=false;}
   if(id==='s-usuarios')rUsuarios();
   if(id==='s-hist-nc')rHN();
   if(id==='s-hist-inf')rHI();
@@ -1698,6 +1699,7 @@ function iIns(){
   const rs=document.getElementById('ins-rs').value;
   const notas=document.getElementById('ins-notas').value;
   if(!f||!a){alert('Completa fecha y área');return;}
+  extMode=false; camMode=false; // por si quedó una Caminata/Extintores a medio camino
   cI={f,h,a,t,rs,sec,notas,rs_vals:{},ncs:[],items:[],clKey:pendingCL.key};
   rCL2(pendingCL);
   gt('s-cl');
@@ -2337,8 +2339,8 @@ function enviarUltimoPorCorreo(){
   gt('s-home');
 }
 
-function gSI(){if(extMode){extMode=false;const r=bRExt(cI.ncs);db.push(r);sv();eS(r);gt('s-home');return;}const r=bRI();db.push(r);sv();eS(r);gt('s-home');}
-function eInf(){if(extMode){extMode=false;const r=bRExt(cI.ncs);db.push(r);sv();eS(r);gPDF('extintores',r);mostrarInformeListo('extintores',r);return;}const r=bRI();db.push(r);sv();eS(r);gPDF('inspeccion',r);mostrarInformeListo('inspeccion',r);}
+function gSI(){if(extMode){extMode=false;const r=bRExt(cI.ncs);db.push(r);sv();eS(r);gt('s-home');return;}if(camMode){camMode=false;const r=bRCam(cI.ncs);db.push(r);sv();eS(r);gt('s-home');return;}const r=bRI();db.push(r);sv();eS(r);gt('s-home');}
+function eInf(){if(extMode){extMode=false;const r=bRExt(cI.ncs);db.push(r);sv();eS(r);gPDF('extintores',r);mostrarInformeListo('extintores',r);return;}if(camMode){camMode=false;const r=bRCam(cI.ncs);db.push(r);sv();eS(r);gPDF('caminata',r);mostrarInformeListo('caminata',r);return;}const r=bRI();db.push(r);sv();eS(r);gPDF('inspeccion',r);mostrarInformeListo('inspeccion',r);}
 
 // FINALIZAR OBSERVACION
 function fObs(sinPDF){
@@ -2379,6 +2381,7 @@ function getNC(vista){
   (vista||getVistaDB()).forEach((r,ri)=>{
     const riReal=db.indexOf(r);
     if(r.tipo==='Inspeccion')(r.ncs||[]).forEach((n,ni)=>items.push({...n,item:n.item||n.it||'',_ri:riReal,_ni:ni,_folio:r.folio,_area:r.area,_fecha:r.fecha,_origen:'Inspeccion',_tipo:r.tipo}));
+    if(r.tipo==='Caminata')(r.ncs||[]).forEach((n,ni)=>items.push({...n,item:n.item||n.it||'',_ri:riReal,_ni:ni,_folio:r.folio,_area:r.area,_fecha:r.fecha,_origen:'Caminata',_tipo:r.tipo}));
     if(r.tipo==='Observacion') items.push({item:r.resumen,estado:r.estadoMedida||'Pendiente',riesgo:'',encargado:'',plazo:r.plazo||'',comentario:r.comentarioVerif||'',fotoVerif:r.fotoVerif||null,tsVerif:r.tsVerif||'',_ri:riReal,_ni:-1,_folio:r.folio,_area:r.area,_fecha:r.fecha,_origen:'Observacion',_tipo:r.tipo});
     if(r.tipo==='CondicionInsegura'||r.tipo==='AccionInsegura') items.push({item:(r.desc||r.resumen||'').substring(0,80),estado:r.estadoMedida||'Pendiente',riesgo:r.riesgo||r.nivelRiesgo||'',encargado:r.encargado||'',plazo:r.plazo||'',comentario:r.comentarioVerif||'',fotoVerif:r.fotoVerif||null,tsVerif:r.tsVerif||'',_ri:riReal,_ni:-1,_folio:r.folio,_area:r.area,_fecha:r.fecha,_origen:r.tipo==='CondicionInsegura'?'Cond. insegura':'Acción insegura',_tipo:r.tipo});
   });
@@ -2411,7 +2414,7 @@ function rHN(){
   const ab=soloCo||soloCe?[]:all.filter(n=>n.estado==='Pendiente'||n.estado==='En proceso');
   const co=soloAb||soloCe?[]:all.filter(n=>n.estado==='Ejecutada');
   const ce=soloAb||soloCo?[]:all.filter(n=>n.estado==='Verificada');
-  const oc={'Inspeccion':['#E6F1FB','#0C447C'],'Observacion':['#EAF3DE','#27500A'],'Cond. insegura':['#FCEBEB','#A32D2D'],'Acción insegura':['var(--orange-bg)','var(--orange)']};
+  const oc={'Inspeccion':['#E6F1FB','#0C447C'],'Observacion':['#EAF3DE','#27500A'],'Cond. insegura':['#FCEBEB','#A32D2D'],'Acción insegura':['var(--orange-bg)','var(--orange)'],'Caminata':['#E8F0FB','#0F4C81']};
   // Color del estado — recorrido pendiente(rojo) -> en proceso(naranja) -> ejecutada(amarillo) -> verificada(verde)
   const ESTADO_COLOR={'Pendiente':['var(--red-bg)','var(--red)'],'En proceso':['var(--orange-bg)','var(--orange)'],'Ejecutada':['var(--yellow-bg)','var(--yellow)'],'Verificada':['var(--green-bg)','var(--green)']};
 
@@ -2520,7 +2523,7 @@ function tCB(id){document.getElementById(id).classList.toggle('open');}
 // pestaña de NC se veía bien (lee directo de ncs[]) y la de Inspecciones no.
 function recalcularEstadoInspeccion(ri){
   const r=db[ri];
-  if(!r||r.tipo!=='Inspeccion'||!r.ncs||!r.ncs.length) return;
+  if(!r||!r.ncs||!r.ncs.length) return;
   if(r.ncs.every(n=>n.estado==='Verificada')){
     r.estadoMedida='Verificada';
     if(!r.fechaCierre) r.fechaCierre=hoy();
@@ -3219,6 +3222,7 @@ function iExt(){
   const f=document.getElementById('ext-fecha').value;
   const a=resolverAreaSimple('ext-area','ext-area-otro');
   if(!f||!a){alert('Completa fecha y área');return;}
+  camMode=false; // por si quedó una Caminata a medio camino
   extList=[];
   rExtList();
   gt('s-ext-cl');
@@ -3325,6 +3329,7 @@ function guardarExt(){
 }
 
 let extMode=false;
+let camMode=false, camDatos=null;
 let extDatos=null;
 
 function buildExtNCs(){
@@ -3421,7 +3426,10 @@ function initFirmaCam(){
   cv.width=rect.width*dpr; cv.height=150*dpr;
   camFirmaCtx=cv.getContext('2d');
   camFirmaCtx.scale(dpr,dpr);
-  camFirmaCtx.fillStyle='#fff'; camFirmaCtx.fillRect(0,0,rect.width,150);
+  // Sin relleno de fondo: el canvas queda transparente (alfa 0) hasta que se
+  // dibuje algo — igual que la firma de perfil, que preserva su canal alfa.
+  // Si se rellena blanco aquí, el PNG exportado queda opaco y tapa la línea
+  // y el nombre del PDF en vez de superponerse limpio.
   camFirmaCtx.strokeStyle='#1A1A1A'; camFirmaCtx.lineWidth=2.2; camFirmaCtx.lineCap='round'; camFirmaCtx.lineJoin='round';
   camFirmaTieneTrazo=false;
   const posFirma=(e)=>{const r=cv.getBoundingClientRect();return{x:e.clientX-r.left,y:e.clientY-r.top};};
@@ -3435,7 +3443,7 @@ function limpiarFirmaCam(){
   const cv=document.getElementById('cam-firma-canvas');
   if(!cv||!camFirmaCtx) return;
   const rect=cv.getBoundingClientRect();
-  camFirmaCtx.fillStyle='#fff'; camFirmaCtx.fillRect(0,0,rect.width,150);
+  camFirmaCtx.clearRect(0,0,rect.width,150);
   camFirmaTieneTrazo=false;
 }
 // Devuelve null si nadie dibujó nada — así no se guarda un PNG en blanco como si fuera una firma real
@@ -3450,6 +3458,7 @@ function iCam() {
   var f = document.getElementById('cam-fecha').value;
   var a = resolverAreaSimple('cam-area','cam-area-otro');
   if (!f || !a) { alert('Completa fecha y area'); return; }
+  extMode = false; // por si quedó una Inspección/Extintores a medio camino
   camItems = CAM_ITEMS.map(function(it) { return {n:it.n, sub:it.sub, d:it.d, critico:it.critico||false, aplica:null, cumple:null, obs:''}; });
   var html = '';
   var curSub = '';
@@ -3533,30 +3542,56 @@ function uCam() {
   document.getElementById('camp').textContent = done + '/' + tot;
 }
 
+function buildCamNCs(){
+  return camItems.filter(it=>it.cumple==='N').map((it,i)=>({
+    idx:'cam'+i, it:it.d, cat:it.sub||'', n:it.n, critico:it.critico||false,
+    riesgo:'',rc:'',re:'',enc:'',cargo:'',plazo:'',com:it.obs||'',foto:it.foto||null,
+    estado:'Pendiente',fotoVerif:null,tsVerif:''
+  }));
+}
+
+function bRCam(ncsArr){
+  const totNC=(ncsArr||[]).length;
+  return {
+    tipo:'Caminata',
+    folio: cnt('Caminata'),
+    fecha: camDatos.fecha, hora: camDatos.hora, area: camDatos.area,
+    razonSocial: camDatos.razonSocial, tipoCaminata: camDatos.tipoCaminata,
+    inspector: usuarioActivo.nombre, cargo: usuarioActivo.cargo||'', registro: usuarioActivo.registro||'',
+    camItems: camDatos.camItems,
+    obs: camDatos.obs,
+    firmaTerceroNombre: camDatos.firmaTerceroNombre, firmaTerceroCargo: camDatos.firmaTerceroCargo, firmaTercero: camDatos.firmaTercero,
+    resumen: 'Caminata SSO-REC-001 - '+totNC+' hallazgos',
+    estadoMedida: totNC>0?'Pendiente':'Cerrada', fechaCierre:'', tsVerif:'', fotoVerif:null, ts:Date.now(),
+    ncs: (ncsArr||[]).map(n=>({item:n.it,cat:n.cat,n:n.n,critico:n.critico||false,riesgo:n.riesgo,riesgoColor:n.rc,respEjec:n.re,encargado:n.enc,cargo:n.cargo,plazo:n.plazo,comentario:n.com,foto:n.foto,estado:n.estado||'Pendiente',fotoVerif:null,tsVerif:''}))
+  };
+}
+
 function fCam(sinPDF) {
   if (!usuarioActivo) { alert('Configura tu perfil'); return; }
-  const ncs = camItems.filter(i => i.cumple === 'N').length;
-  const r = {
-    tipo: 'Caminata',
-    folio: cnt('Caminata'),
+  camDatos = {
     fecha: document.getElementById('cam-fecha').value,
     hora: document.getElementById('cam-hora').value,
     area: resolverAreaSimple('cam-area','cam-area-otro'),
     razonSocial: document.getElementById('cam-rs').value,
     tipoCaminata: camTipo || 'Programado',
-    inspector: usuarioActivo.nombre,
-    cargo: usuarioActivo.cargo || '',
-    registro: usuarioActivo.registro || '',
     camItems: camItems.map(it => ({n:it.n, sub:it.sub, d:it.d, aplica:it.aplica, cumple:it.cumple, critico:it.critico||false, obs:it.obs, foto:it.foto||null})),
     obs: document.getElementById('cam-obs').value,
     firmaTerceroNombre: document.getElementById('cam-firma-nombre').value.trim(),
     firmaTerceroCargo: document.getElementById('cam-firma-cargo').value.trim(),
-    firmaTercero: getFirmaCamDataURL(),
-    resumen: 'Caminata SSO-REC-001 - ' + ncs + ' hallazgos',
-    estadoMedida: ncs > 0 ? 'Pendiente' : 'Cerrada',
-    fechaCierre: '', tsVerif: '', fotoVerif: null,
-    ts: Date.now()
+    firmaTercero: getFirmaCamDataURL()
   };
+  const ncsArr = buildCamNCs();
+  if (ncsArr.length > 0 && !sinPDF) {
+    // Mismo flujo de asignación de NC (riesgo, encargado, plazo) que usan
+    // Inspección y Extintores — así las NC de Caminata quedan con la misma
+    // estructura y aparecen igual en Historial de NC.
+    camMode = true;
+    cI = {ncs: ncsArr, items: [], rs_vals: {}};
+    rNL(); gt('s-nc');
+    return;
+  }
+  const r = bRCam(ncsArr);
   db.push(r); sv(); eS(r);
   if (sinPDF) { gt('s-home'); return; }
   gPDF('caminata', r);
