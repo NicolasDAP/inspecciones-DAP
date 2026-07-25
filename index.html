@@ -1670,6 +1670,68 @@ function quitarFotosObj(v){
   if(v&&typeof v==='object'){const o={};for(const k in v) o[k]=quitarFotosObj(v[k]);return o;}
   return v;
 }
+
+// ═══════════ ARCHIVADO EN DRIVE AL CIERRE TOTAL DEL INFORME ═══════════
+// Un informe "cerrado" es uno donde ya no queda nada por gestionar:
+// - Si tiene ncs[] (Inspección/Extintores/Caminata): todas verificadas.
+// - Si es de un solo ítem (Observación/CI-AI/Hallazgo): su estadoMedida ya es
+//   terminal (Verificada, o Cerrada para los que nacen sin NC).
+// Solo entonces el PDF es "definitivo" y vale la pena subirlo a Drive.
+function estaCerrado(r){
+  if(!r) return false;
+  if(r.ncs&&r.ncs.length) return r.ncs.every(n=>n.estado==='Verificada');
+  return r.estadoMedida==='Verificada'||r.estadoMedida==='Cerrada';
+}
+
+// Intenta archivar un informe cerrado en Drive. Es seguro llamarla siempre
+// (idempotente): si ya tiene driveUrl, o si todavía no está cerrado, no hace
+// nada. Las fotos del dispositivo SOLO se borran si el servidor CONFIRMA que
+// el PDF quedó guardado en Drive — si falla (sin conexión, error del script),
+// el registro queda intacto con sus fotos para reintentar más tarde.
+async function intentarArchivarEnDrive(ri){
+  const r=db[ri];
+  if(!r||r.driveUrl||!estaCerrado(r)) return {ok:false,motivo:'no-aplica'};
+  try{
+    const pdfBase64=generarPDFBase64(tipoPDFde(r),r);
+    const resp=await fetch(SHEETS_URL,{method:'POST',body:JSON.stringify({
+      _action:'archivarDrive',
+      tipo:r.tipo,
+      folio:r.folio,
+      pdfBase64,
+      nombreArchivo:'DAP_'+san(r.folio||'Informe')+'.pdf'
+    }),headers:{'Content-Type':'text/plain;charset=utf-8'},mode:'cors'});
+    const data=await resp.json();
+    if(data&&data.ok&&data.driveUrl){
+      r.driveUrl=data.driveUrl;
+      // Confirmado: el PDF definitivo ya vive en Drive. Recién ahora se liberan
+      // las fotos locales — nunca antes de tener la confirmación.
+      const limpio=quitarFotosObj(r);
+      Object.keys(limpio).forEach(k=>{r[k]=limpio[k];});
+      r.driveUrl=data.driveUrl; // quitarFotosObj no toca este campo, pero por claridad
+      sv();rHN();rHI();
+      return {ok:true,driveUrl:data.driveUrl};
+    }
+    return {ok:false,motivo:(data&&data.error)||'sin confirmación del servidor'};
+  }catch(e){
+    return {ok:false,motivo:'sin conexión'};
+  }
+}
+
+// Botón manual de respaldo (Historial de informes) por si el archivado
+// automático falló al momento del cierre — mismo patrón que "Actualizar".
+async function archivarManualmente(ri,btnEl){
+  const r=db[ri];
+  if(!r) return;
+  if(!estaCerrado(r)){alert('Este informe todavía tiene NC pendientes — se archivará solo cuando quede cerrado del todo.');return;}
+  if(r.driveUrl){alert('Este informe ya está archivado en Drive.');return;}
+  const orig=btnEl.innerHTML;
+  btnEl.innerHTML='<i class="ti ti-loader-2"></i> Archivando...';btnEl.disabled=true;
+  const res=await intentarArchivarEnDrive(ri);
+  if(res.ok){btnEl.innerHTML='<i class="ti ti-cloud-check"></i> Archivado';}
+  else{btnEl.innerHTML='<i class="ti ti-alert-triangle"></i> Falló';alert('No se pudo archivar en Drive: '+res.motivo+'.\n\nEl informe y sus fotos siguen intactos en el dispositivo. Intenta de nuevo con mejor conexión.');}
+  setTimeout(()=>{btnEl.innerHTML=orig;btnEl.disabled=false;rHI();},2500);
+}
+
 function exportarRegistros(conFotos){
   if(!db.length){alert('No hay registros para exportar.');return;}
   let regs=JSON.parse(JSON.stringify(db));
@@ -2438,8 +2500,8 @@ function enviarUltimoPorCorreo(){
   enviarInformePorCorreo(ri);
 }
 
-function gSI(){if(extMode){extMode=false;const r=bRExt(cI.ncs);db.push(r);sv();eS(r);gt('s-home');return;}if(camMode){camMode=false;const r=bRCam(cI.ncs);db.push(r);sv();eS(r);gt('s-home');return;}const r=bRI();db.push(r);sv();eS(r);gt('s-home');}
-function eInf(){if(extMode){extMode=false;const r=bRExt(cI.ncs);db.push(r);sv();eS(r);gPDF('extintores',r);mostrarInformeListo('extintores',r);return;}if(camMode){camMode=false;const r=bRCam(cI.ncs);db.push(r);sv();eS(r);gPDF('caminata',r);mostrarInformeListo('caminata',r);return;}const r=bRI();db.push(r);sv();eS(r);gPDF('inspeccion',r);mostrarInformeListo('inspeccion',r);}
+function gSI(){if(extMode){extMode=false;const r=bRExt(cI.ncs);db.push(r);sv();eS(r);intentarArchivarEnDrive(db.length-1);gt('s-home');return;}if(camMode){camMode=false;const r=bRCam(cI.ncs);db.push(r);sv();eS(r);intentarArchivarEnDrive(db.length-1);gt('s-home');return;}const r=bRI();db.push(r);sv();eS(r);intentarArchivarEnDrive(db.length-1);gt('s-home');}
+function eInf(){if(extMode){extMode=false;const r=bRExt(cI.ncs);db.push(r);sv();eS(r);intentarArchivarEnDrive(db.length-1);gPDF('extintores',r);mostrarInformeListo('extintores',r);return;}if(camMode){camMode=false;const r=bRCam(cI.ncs);db.push(r);sv();eS(r);intentarArchivarEnDrive(db.length-1);gPDF('caminata',r);mostrarInformeListo('caminata',r);return;}const r=bRI();db.push(r);sv();eS(r);intentarArchivarEnDrive(db.length-1);gPDF('inspeccion',r);mostrarInformeListo('inspeccion',r);}
 
 // FINALIZAR OBSERVACION
 function fObs(sinPDF){
@@ -2448,7 +2510,7 @@ function fObs(sinPDF){
   const d={fecha:document.getElementById('obs-fecha').value,hora:document.getElementById('obs-hora').value,area:obsArea,seccion:obsSeccion,razonSocial:document.getElementById('obs-rs').value,puesto:document.getElementById('obs-puesto').value,tipo_conducta:otp||'No especificado',cat:document.getElementById('obs-cat').value,desc:document.getElementById('obs-desc').value,accion:document.getElementById('obs-accion').value,foto:ofd};
   if(!d.fecha||!d.area){alert('Completa los campos requeridos');return;}
   const r={tipo:'Observacion',folio:cnt('Observacion'),fecha:d.fecha,hora:d.hora,area:d.area,razonSocial:d.razonSocial,inspector:usuarioActivo.nombre,cargo:usuarioActivo.cargo||'',registro:usuarioActivo.registro||'',resumen:d.tipo_conducta+' - '+d.cat,estadoMedida:'Pendiente',fechaCierre:'',tsVerif:'',fotoVerif:null,ts:Date.now(),...d};
-  db.push(r);sv();eS(r);
+  db.push(r);sv();eS(r);intentarArchivarEnDrive(db.length-1);
   if(!sinPDF){gPDF('observacion',r);mostrarInformeListo('observacion',r);}
   else gt('s-home');
 }
@@ -2467,7 +2529,7 @@ function fCI(sinPDF){
   if(tipo==='CondicionInsegura'){d.desc=document.getElementById('ci-desc-cond').value;const eqSel=document.getElementById('ci-equipo').value;d.equipo=eqSel==='__otro'?document.getElementById('ci-equipo-otro').value.trim():eqSel;d.foto=cifd;}
   else{d.desc=document.getElementById('ai-desc-cond').value;d.actividadEjec=document.getElementById('ai-actividad').value;d.cargoTrab=document.getElementById('ai-cargo-trab').value;d.estandar=document.getElementById('ai-estandar').value;d.intervencion=document.getElementById('ai-intervencion').value;d.foto=aifd;}
   const r={tipo,folio:cnt(tipo),fecha:d.fecha,hora:d.hora,area:d.area,razonSocial:d.razonSocial,inspector:usuarioActivo.nombre,cargo:usuarioActivo.cargo||'',registro:usuarioActivo.registro||'',resumen:(tipo==='CondicionInsegura'?'CI':'AI')+' - Riesgo '+d.riesgo+' - '+(d.desc||'').substring(0,40),nivelRiesgo:d.riesgo,estadoMedida:'Pendiente',fechaCierre:'',tsVerif:'',fotoVerif:null,ts:Date.now(),...d};
-  db.push(r);sv();eS(r);
+  db.push(r);sv();eS(r);intentarArchivarEnDrive(db.length-1);
   if(sinPDF){gt('s-home');return;}
   const tp=tipo==='CondicionInsegura'?'ci':'ai';
   gPDF(tp,r);
@@ -2643,6 +2705,7 @@ function sEN(ri,ni,e){
   if(ni>=0){db[ri].ncs[ni].estado=e;if(e==='Verificada')db[ri].ncs[ni].tsVerif=fh();recalcularEstadoInspeccion(ri);}
   else{db[ri].estadoMedida=e;if(e==='Verificada'){db[ri].fechaCierre=hoy();db[ri].tsVerif=fh();}}
   sv();eS({...db[ri],_update:true});rHN();
+  intentarArchivarEnDrive(ri);
 }
 
 function gEv(ri,ni,gi,inp){
@@ -2699,6 +2762,7 @@ function rHI(){
     const nc=(r.tipo==='Inspeccion'&&r.ncs)?r.ncs.length:0;
     const tChk=r.tipo==='Inspeccion'?tituloChecklist(r.clKey):'';
     const lugar=r.area+(r.seccion?' — '+r.seccion:'');
+    const cerrado=estaCerrado(r);
     return `<div class="hi">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:7px;gap:6px">
         <div style="display:flex;align-items:center;gap:5px;flex-wrap:wrap">
@@ -2706,11 +2770,12 @@ function rHI(){
           <span class="folio-badge">${r.folio||'-'}</span>
           <span style="font-size:11px;color:var(--muted)">${r.fecha} ${r.hora||''}</span>
         </div>
-        <div style="display:flex;gap:5px;flex-shrink:0">
+        <div style="display:flex;gap:5px;flex-shrink:0;flex-wrap:wrap">
           <button class="btn-sm" onclick="verInforme(${ri},'s-hist-inf')"><i class="ti ti-eye"></i> Ver</button>
           <button class="btn-sm" onclick="rPDF(${ri})"><i class="ti ti-download"></i> PDF</button>
           <button class="btn-sm" onclick="reenviarASheet(${ri},this)"><i class="ti ti-refresh"></i> Actualizar</button>
           <button class="btn-sm" onclick="enviarInformePorCorreo(${ri})"><i class="ti ti-mail"></i></button>
+          ${cerrado&&!r.driveUrl?`<button class="btn-sm" onclick="archivarManualmente(${ri},this)"><i class="ti ti-cloud-upload"></i> Archivar</button>`:''}
           <button class="btn-sm-danger" onclick="tCB('di${ri}')"><i class="ti ti-trash"></i></button>
         </div>
       </div>
@@ -2719,7 +2784,7 @@ function rHI(){
       ${r.razonSocial?`<div style="font-size:11px;color:var(--muted);margin-top:2px">${r.razonSocial.split(' ').slice(0,4).join(' ')}...</div>`:''}
       <div style="font-size:12px;color:var(--muted);margin-top:2px">${r.inspector} — ${r.resumen}</div>
       ${nc>0?`<div style="font-size:11px;color:var(--red);margin-top:3px">${nc} NC detectada(s)</div>`:''}
-      ${r.estadoMedida?`<div style="margin-top:5px"><span style="font-size:11px;padding:3px 9px;border-radius:20px;font-weight:600;background:${r.estadoMedida==='Verificada'?'var(--green-bg)':'var(--yellow-bg)'};color:${r.estadoMedida==='Verificada'?'var(--green)':'var(--yellow)'}">${r.estadoMedida}</span>${r.tsVerif?`<span style="font-size:11px;color:var(--muted);margin-left:5px">Ver: ${r.tsVerif}</span>`:''}</div>`:''}
+      ${r.estadoMedida?`<div style="margin-top:5px"><span style="font-size:11px;padding:3px 9px;border-radius:20px;font-weight:600;background:${r.estadoMedida==='Verificada'?'var(--green-bg)':'var(--yellow-bg)'};color:${r.estadoMedida==='Verificada'?'var(--green)':'var(--yellow)'}">${r.estadoMedida}</span>${r.tsVerif?`<span style="font-size:11px;color:var(--muted);margin-left:5px">Ver: ${r.tsVerif}</span>`:''}${r.driveUrl?`<a href="${r.driveUrl}" target="_blank" style="font-size:11px;color:#0F4C81;margin-left:8px;text-decoration:none"><i class="ti ti-cloud-check"></i> Archivado en Drive</a>`:''}</div>`:''}
       <div class="confirm-box" id="di${ri}">
         <div style="font-size:13px;color:var(--red);margin-bottom:9px;font-weight:600">¿Eliminar informe ${r.folio||''}? No se puede deshacer.</div>
         <div style="display:flex;gap:7px">
@@ -2752,7 +2817,11 @@ function tipoPDFde(r){
   }
 }
 
-function rPDF(ri){const r=db[ri];if(!r)return;gPDF(tipoPDFde(r),r);}
+function rPDF(ri){
+  const r=db[ri];if(!r)return;
+  if(r.driveUrl){window.open(r.driveUrl,'_blank');return;}
+  gPDF(tipoPDFde(r),r);
+}
 
 // SHEETS
 let previewRi=null;
@@ -2770,6 +2839,14 @@ function verInforme(ri,origen){
   </div>
   <div style="font-size:15px;font-weight:700;margin-bottom:2px">${r.area||''}${r.seccion?' — '+r.seccion:''}</div>
   <div style="font-size:12px;color:var(--muted);margin-bottom:12px">${r.fecha||''} ${r.hora||''} — ${r.inspector||''}</div>`;
+
+  if(r.driveUrl){
+    html+=`<div style="background:#E6F1FB;border:1px solid #0F4C81;border-radius:9px;padding:12px;margin-bottom:14px">
+      <div style="font-size:13px;font-weight:600;color:#0C447C;margin-bottom:6px"><i class="ti ti-cloud-check"></i> Este informe ya quedó cerrado y se archivó en Drive</div>
+      <div style="font-size:12px;color:#0C447C;margin-bottom:8px">Para liberar espacio, las fotos ya no se guardan en este dispositivo. El documento completo, con todas las fotos, vive en el PDF de Drive.</div>
+      <a href="${r.driveUrl}" target="_blank" style="display:inline-block;background:#0F4C81;color:#fff;padding:8px 14px;border-radius:8px;font-size:13px;font-weight:600;text-decoration:none"><i class="ti ti-external-link"></i> Abrir PDF completo en Drive</a>
+    </div>`;
+  }
 
   if(r.razonSocial) html+=`<div style="margin-bottom:8px"><span class="fl" style="display:inline">Razón social:</span> ${r.razonSocial}</div>`;
 
@@ -2847,7 +2924,7 @@ function verInforme(ri,origen){
     <div class="fl">Propuesta de mejora</div><div style="margin-bottom:8px">${r.propuestaMejora||'Sin propuesta registrada'}</div>
     <div class="fl">Estado</div><div style="margin-bottom:8px">${r.estadoMedida||'Pendiente'}${r.tsVerif?' — Cerrado: '+r.tsVerif:''}</div>`;
     if(r.comentarioVerif) html+=`<div class="fl">Comentario de cierre</div><div style="margin-bottom:8px">${r.comentarioVerif}</div>`;
-    (r.fotosHallazgo||[]).forEach(f=>html+=`<img src="${f}" style="max-width:100%;border-radius:8px;margin-bottom:8px">`);
+    (r.fotosHallazgo||[]).filter(Boolean).forEach(f=>html+=`<img src="${f}" style="max-width:100%;border-radius:8px;margin-bottom:8px">`);
   }
 
   if(r.tipo==='Inspeccion'&&r.clKey==='001B'){
@@ -3040,18 +3117,23 @@ async function confirmarEnvioCorreo(){
   const btn=document.querySelector('#s-enviar-correo .btn-orange');
   const orig=btn?btn.innerHTML:'';
   if(btn){btn.innerHTML='<i class="ti ti-loader-2"></i> Enviando...';btn.disabled=true;}
-  const pdfBase64=generarPDFBase64(tipoPDFde(r),r);
+  // Si el informe ya se archivó en Drive, sus fotos ya NO están en el dispositivo
+  // (se liberaron al confirmar el archivado). Generar el PDF localmente en ese
+  // caso produciría un documento incompleto. En vez de eso, se le pide al Apps
+  // Script que adjunte el PDF definitivo que ya vive en Drive.
+  const payload=r.driveUrl?{
+    _action:'enviarPDF', destinatario, cc, driveUrl:r.driveUrl,
+    nombreArchivo:'DAP_'+(r.folio||'Informe')+'.pdf',
+    remitenteNombre:usuarioActivo?usuarioActivo.nombre:'', remitenteCorreo:usuarioActivo?usuarioActivo.correo:'',
+    folio:r.folio||''
+  }:{
+    _action:'enviarPDF', destinatario, cc, pdfBase64:generarPDFBase64(tipoPDFde(r),r),
+    nombreArchivo:'DAP_'+(r.folio||'Informe')+'.pdf',
+    remitenteNombre:usuarioActivo?usuarioActivo.nombre:'', remitenteCorreo:usuarioActivo?usuarioActivo.correo:'',
+    folio:r.folio||''
+  };
   try{
-    const resp=await fetch(SHEETS_URL,{method:'POST',body:JSON.stringify({
-      _action:'enviarPDF',
-      destinatario,
-      cc,
-      pdfBase64,
-      nombreArchivo:'DAP_'+(r.folio||'Informe')+'.pdf',
-      remitenteNombre:usuarioActivo?usuarioActivo.nombre:'',
-      remitenteCorreo:usuarioActivo?usuarioActivo.correo:'',
-      folio:r.folio||''
-    }),headers:{'Content-Type':'text/plain;charset=utf-8'},mode:'cors'});
+    const resp=await fetch(SHEETS_URL,{method:'POST',body:JSON.stringify(payload),headers:{'Content-Type':'text/plain;charset=utf-8'},mode:'cors'});
     const data=await resp.json();
     if(data&&data.ok){
       alert('Informe enviado a '+destinatario+(cc?' (CC: '+cc+')':'')+'.');
@@ -3705,7 +3787,7 @@ function fExt(sinPDF){
     return;
   }
   const r=bRExt(ncsArr);
-  db.push(r);sv();eS(r);
+  db.push(r);sv();eS(r);intentarArchivarEnDrive(db.length-1);
   if(sinPDF){gt('s-home');return;}
   gPDF('extintores',r);
   mostrarInformeListo('extintores',r);
@@ -3915,7 +3997,7 @@ function fCam(sinPDF) {
     return;
   }
   const r = bRCam(ncsArr);
-  db.push(r); sv(); eS(r);
+  db.push(r); sv(); eS(r); intentarArchivarEnDrive(db.length-1);
   if (sinPDF) { gt('s-home'); return; }
   gPDF('caminata', r);
   mostrarInformeListo('caminata', r);
@@ -3995,7 +4077,7 @@ function fHal(sinPDF){
     estadoMedida:'Pendiente', fechaCierre:'', tsVerif:'', fotoVerif:null,
     ts:Date.now()
   };
-  db.push(r); sv(); eS(r);
+  db.push(r); sv(); eS(r); intentarArchivarEnDrive(db.length-1);
   if(sinPDF){gt('s-home');return;}
   gPDF('hallazgo',r);
   mostrarInformeListo('hallazgo',r);
