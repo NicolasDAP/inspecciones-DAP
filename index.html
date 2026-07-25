@@ -311,6 +311,10 @@ textarea{min-height:74px;resize:vertical}
     <div class="divider"></div>
     <button class="btn btn-black" onclick="gt('s-respaldo-registros')"><i class="ti ti-database-export"></i> Respaldo de registros</button>
   </div>
+  <div id="acceso-cat-correos" style="display:none">
+    <div class="divider"></div>
+    <button class="btn btn-black" onclick="gt('s-cat-correos')"><i class="ti ti-mail-cog"></i> Correos frecuentes</button>
+  </div>
 </div>
 
 <!-- PANEL CONFIGURACION DE ALERTAS (solo admin) -->
@@ -414,6 +418,36 @@ textarea{min-height:74px;resize:vertical}
   <button class="btn btn-sec" onclick="cancelarImportacion()">Cancelar</button>
 </div>
 
+<!-- CORREOS FRECUENTES (solo admin) -->
+<div id="s-cat-correos" class="scr">
+  <button class="btn-sm" onclick="gt('s-usuarios')" style="margin-bottom:14px"><i class="ti ti-arrow-left"></i> Usuarios</button>
+  <div class="page-title">Correos frecuentes</div>
+  <div class="page-sub">Aparecen como botones rápidos al enviar un informe por correo. Cualquiera puede usarlos; solo un admin puede agregarlos o quitarlos.</div>
+  <div style="display:flex;gap:8px;margin-bottom:14px">
+    <input type="text" id="cat-correo-nuevo" placeholder="nombre@dominio.cl" style="flex:1;margin-bottom:0">
+    <button class="btn-sm" onclick="agregarCorreoFrecuente()"><i class="ti ti-plus"></i></button>
+  </div>
+  <div class="divider"></div>
+  <div id="cat-correos-body"></div>
+</div>
+
+<!-- ENVIAR INFORME POR CORREO -->
+<div id="s-enviar-correo" class="scr">
+  <button class="btn-sm" onclick="cancelarEnvioCorreo()" style="margin-bottom:14px"><i class="ti ti-arrow-left"></i> Volver</button>
+  <div class="page-title">Enviar informe por correo</div>
+  <div class="page-sub" id="env-correo-folio"></div>
+
+  <label class="fl">Para</label>
+  <div id="env-correo-frecuentes-para" style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px"></div>
+  <input type="text" id="env-correo-para" placeholder="correo@ejemplo.com, otro@ejemplo.com">
+
+  <label class="fl" style="margin-top:12px">CC (opcional)</label>
+  <div id="env-correo-frecuentes-cc" style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px"></div>
+  <input type="text" id="env-correo-cc" placeholder="correo@ejemplo.com">
+
+  <button class="btn btn-orange" style="margin-top:16px" onclick="confirmarEnvioCorreo()"><i class="ti ti-send"></i> Enviar</button>
+</div>
+
 <!-- PERFIL NUEVO -->
 <div id="s-perfil-nuevo" class="scr">
   <button class="btn-sm" onclick="gt('s-usuarios')" style="margin-bottom:14px"><i class="ti ti-arrow-left"></i> Usuarios</button>
@@ -483,6 +517,7 @@ textarea{min-height:74px;resize:vertical}
     <button class="filter-btn" data-f="CondicionInsegura" onclick="setFiltroNC('CondicionInsegura',this)">CI/AI</button>
     <button class="filter-btn" data-f="Observacion" onclick="setFiltroNC('Observacion',this)">Observación</button>
     <button class="filter-btn" data-f="Caminata" onclick="setFiltroNC('Caminata',this)">Caminata</button>
+    <button class="filter-btn" data-f="Hallazgo" onclick="setFiltroNC('Hallazgo',this)">Hallazgo</button>
     <button class="filter-btn" data-f="abiertos" onclick="setFiltroNC('abiertos',this)">Abiertos</button>
     <button class="filter-btn" data-f="corregidos" onclick="setFiltroNC('corregidos',this)">Corregidos</button>
     <button class="filter-btn" data-f="cerrados" onclick="setFiltroNC('cerrados',this)">Cerrados</button>
@@ -837,12 +872,13 @@ textarea{min-height:74px;resize:vertical}
     <label class="fl">Descripción de la condición (qué está mal y por qué es riesgo)</label>
     <textarea id="ci-desc-cond" placeholder="Describe la condición insegura detectada..."></textarea>
     <label class="fl">Equipo o instalación involucrada</label>
-    <select id="ci-equipo">
+    <select id="ci-equipo" onchange="toggleOtroSimple('ci-equipo','ci-equipo-otro')">
       <option value="">Seleccionar...</option>
       <option>Aeronave</option><option>Vehículo GSE</option><option>Cinta transportadora</option>
       <option>Extintor</option><option>Instalación eléctrica</option><option>Estructura / edificio</option>
-      <option>Herramienta manual</option><option>Equipo de protección</option><option>Otro</option>
+      <option>Herramienta manual</option><option>Equipo de protección</option><option value="__otro">Otro</option>
     </select>
+    <input type="text" id="ci-equipo-otro" placeholder="Especifica el equipo o instalación..." style="display:none">
     <div class="fbtn" onclick="document.getElementById('ci-foto-input').click()"><i class="ti ti-camera" style="font-size:21px"></i><span id="ci-foto-lbl">Adjuntar foto</span></div>
     <div id="ci-foto-info"></div>
     <input type="file" id="ci-foto-input" accept="image/*" style="display:none" onchange="sFCI(this)">
@@ -1038,6 +1074,7 @@ function ld(){
   usuarioActivo=uid?usuarios.find(u=>u.id===uid):null;
   if(!usuarioActivo&&usuarios.length>0) usuarioActivo=usuarios[0];
   cargarCatAreas();
+  cargarCatCorreos();
   // Set logo
   document.getElementById('hdr-logo').src='data:image/jpeg;base64,'+LOGO_B64;
 }
@@ -1045,9 +1082,24 @@ function ld(){
 function sv(){localStorage.setItem(DK,JSON.stringify(db));}
 function svU(){localStorage.setItem(UK,JSON.stringify(usuarios));}
 
+// Iniciales del inspector activo, para prefijar folios y que no colisionen entre
+// dispositivos. "Nicolás Fuentes Sepúlveda" → "NFS". Se limita a 3 letras y se
+// quitan acentos para que el folio quede limpio (NFS-INS-0001).
+function inicialesUsuario(){
+  const nombre=(usuarioActivo&&usuarioActivo.nombre)||'';
+  const ini=nombre.trim().split(/\s+/).filter(Boolean).map(p=>p[0]).join('').slice(0,3).toUpperCase()
+    .normalize('NFD').replace(/[\u0300-\u036f]/g,'');
+  return ini||'XXX';
+}
+
 function cnt(t){
-  const p={Inspeccion:'INS',Observacion:'OBS',CondicionInsegura:'CI',AccionInsegura:'AI',Hallazgo:'HAL'};
-  return(p[t]||'REG')+'-'+String(db.filter(r=>r.tipo===t).length+1).padStart(4,'0');
+  const p={Inspeccion:'INS',Observacion:'OBS',CondicionInsegura:'CI',AccionInsegura:'AI',Hallazgo:'HAL',Caminata:'CAM'};
+  const pre=p[t]||'REG';
+  const ini=inicialesUsuario();
+  // El correlativo cuenta solo los registros de este usuario y tipo, para que la
+  // numeración por persona sea consecutiva y legible.
+  const propios=db.filter(r=>r.tipo===t && r.inspector===(usuarioActivo&&usuarioActivo.nombre)).length;
+  return ini+'-'+pre+'-'+String(propios+1).padStart(4,'0');
 }
 
 // NAVEGACION
@@ -1061,6 +1113,7 @@ function gt(id){
   if(id==='s-hist-inf')rHI();
   if(id==='s-config-alertas')rConfigAlertas();
   if(id==='s-catalogo-areas')rCatAreas();
+  if(id==='s-cat-correos')rCatCorreos();
   if(id==='s-ins-init'){document.getElementById('ins-fecha').value=hoy();document.getElementById('ins-hora').value=hora();poblarSelectArea('ins-area');}
   if(id==='s-cl-menu')rClMenu();
   if(id==='s-obs-init'){
@@ -1091,6 +1144,10 @@ function gt(id){
     document.getElementById('campos-ai').classList.remove('visible');
     document.getElementById('tcb-ci').className='type-btn';
     document.getElementById('tcb-ai').className='type-btn';
+    // Limpiar campos de texto para no arrastrar el registro anterior
+    ['ci-desc-cond','ci-equipo-otro','ai-actividad','ai-cargo-trab','ai-estandar','ai-intervencion','ai-desc-cond','ci-rs'].forEach(x=>{const el=document.getElementById(x);if(el)el.value='';});
+    const eqSel=document.getElementById('ci-equipo');if(eqSel)eqSel.value='';
+    const eqOtro=document.getElementById('ci-equipo-otro');if(eqOtro)eqOtro.style.display='none';
     poblarSelectArea('ci-area');
   }
 }
@@ -1203,6 +1260,7 @@ function rUsuarios(){
     document.getElementById('acceso-config-alertas').style.display='none';
     const accCat0=document.getElementById('acceso-catalogo-areas'); if(accCat0) accCat0.style.display='none';
     const accReg0=document.getElementById('acceso-respaldo-registros'); if(accReg0) accReg0.style.display='none';
+    const accCor0=document.getElementById('acceso-cat-correos'); if(accCor0) accCor0.style.display='none';
     return;}
   ul.innerHTML=usuarios.map(u=>{
     const ini=(u.nombre||'?')[0].toUpperCase();
@@ -1219,6 +1277,7 @@ function rUsuarios(){
   document.getElementById('acceso-config-alertas').style.display=(usuarioActivo&&usuarioActivo.rol==='admin')?'block':'none';
   const accCat=document.getElementById('acceso-catalogo-areas'); if(accCat) accCat.style.display=(usuarioActivo&&usuarioActivo.rol==='admin')?'block':'none';
   const accReg=document.getElementById('acceso-respaldo-registros'); if(accReg) accReg.style.display=(usuarioActivo&&usuarioActivo.rol==='admin')?'block':'none';
+  const accCor=document.getElementById('acceso-cat-correos'); if(accCor) accCor.style.display=(usuarioActivo&&usuarioActivo.rol==='admin')?'block':'none';
 }
 
 function selUsuario(uid){
@@ -1362,6 +1421,48 @@ function cargarCatAreas(){
   guardarCatAreas();
 }
 function guardarCatAreas(){localStorage.setItem(CATAK,JSON.stringify(CAT_AREAS));}
+
+// ═══════════ CATÁLOGO DE CORREOS FRECUENTES (para "Enviar informe") ═══════════
+const CCK='dap-cat-correos';
+let CAT_CORREOS=[];
+function catCorreoUid(){return 'c'+Date.now().toString(36)+Math.random().toString(36).slice(2,6);}
+function cargarCatCorreos(){
+  const raw=localStorage.getItem(CCK);
+  if(raw){ try{CAT_CORREOS=JSON.parse(raw);return;}catch(e){} }
+  CAT_CORREOS=[
+    {id:catCorreoUid(),correo:'seguridad@dap.cl'},
+    {id:catCorreoUid(),correo:'andrea.sanchez@dap.cl'},
+    {id:catCorreoUid(),correo:'guillermo.hernandez@aeroviasdap.cl'},
+    {id:catCorreoUid(),correo:'rodrigo.duran@aeroviasdap.cl'}
+  ];
+  guardarCatCorreos();
+}
+function guardarCatCorreos(){localStorage.setItem(CCK,JSON.stringify(CAT_CORREOS));}
+function rCatCorreos(){
+  cargarCatCorreos();
+  const cont=document.getElementById('cat-correos-body');
+  if(!CAT_CORREOS.length){cont.innerHTML='<div style="font-size:13px;color:var(--muted);padding:8px 0">Sin correos frecuentes guardados.</div>';return;}
+  cont.innerHTML=CAT_CORREOS.map(c=>`<div class="user-item" style="cursor:default">
+    <div style="flex:1;font-size:14px;color:var(--text)">${c.correo}</div>
+    <button class="btn-sm-danger" onclick="eliminarCorreoFrecuente('${c.id}')"><i class="ti ti-trash"></i></button>
+  </div>`).join('');
+}
+function agregarCorreoFrecuente(){
+  const inp=document.getElementById('cat-correo-nuevo');
+  const correo=inp.value.trim();
+  if(!correo) return;
+  if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(correo)){alert('Ese correo no parece válido.');return;}
+  if(CAT_CORREOS.some(c=>c.correo.toLowerCase()===correo.toLowerCase())){alert('Ese correo ya está guardado.');return;}
+  CAT_CORREOS.push({id:catCorreoUid(),correo});
+  guardarCatCorreos();
+  inp.value='';
+  rCatCorreos();
+}
+function eliminarCorreoFrecuente(id){
+  CAT_CORREOS=CAT_CORREOS.filter(c=>c.id!==id);
+  guardarCatCorreos();
+  rCatCorreos();
+}
 
 function poblarSelectArea(selectId){
   const sel=document.getElementById(selectId);
@@ -1707,6 +1808,15 @@ function iIns(){
 
 // ── CATÁLOGO DE CHECKLISTS ─────────────────────────────────────
 // Estructura: { key, code, title, desc, grupos:[{sub, items:[{n,d,crit?,critico?}]}] }
+function tituloChecklist(clKey){
+  if(!clKey) return '';
+  if(clKey==='001B') return 'Extintores';
+  for(const g of CL_CAT){
+    const c=(g.checks||[]).find(c=>c.key===clKey);
+    if(c) return c.title;
+  }
+  return '';
+}
 const CL_CAT = [
   {
     grupo:'Infraestructura y emergencia',
@@ -2323,20 +2433,9 @@ function mostrarInformeListo(tipoPDF,r){
 
 function enviarUltimoPorCorreo(){
   if(!ultimoRegistro){gt('s-home');return;}
-  const destinatario=prompt('Correo del destinatario:');
-  if(!destinatario)return;
-  const pdfBase64=generarPDFBase64(ultimoTipoPDF,ultimoRegistro);
-  fetch(SHEETS_URL,{method:'POST',body:JSON.stringify({
-    _action:'enviarPDF',
-    destinatario,
-    pdfBase64,
-    nombreArchivo:'DAP_'+(ultimoRegistro.folio||'Informe')+'.pdf',
-    remitenteNombre:usuarioActivo?usuarioActivo.nombre:'',
-    remitenteCorreo:usuarioActivo?usuarioActivo.correo:'',
-    folio:ultimoRegistro.folio||''
-  }),headers:{'Content-Type':'application/json'},mode:'no-cors'});
-  alert('Informe enviado a '+destinatario+'.');
-  gt('s-home');
+  const ri=db.indexOf(ultimoRegistro);
+  if(ri<0){gt('s-home');return;}
+  enviarInformePorCorreo(ri);
 }
 
 function gSI(){if(extMode){extMode=false;const r=bRExt(cI.ncs);db.push(r);sv();eS(r);gt('s-home');return;}if(camMode){camMode=false;const r=bRCam(cI.ncs);db.push(r);sv();eS(r);gt('s-home');return;}const r=bRI();db.push(r);sv();eS(r);gt('s-home');}
@@ -2365,7 +2464,7 @@ function fCI(sinPDF){
   const{area:ciArea,seccion:ciSeccion}=resolverAreaSeccion('ci');
   const d={fecha:document.getElementById('ci-fecha').value,hora:document.getElementById('ci-hora').value,area:ciArea,seccion:ciSeccion,razonSocial:document.getElementById('ci-rs').value,consecuencia:document.getElementById('ci-consecuencia').value,riesgo:rci,riesgoColor:rcc,encargado:document.getElementById('ci-encargado').value,plazo:document.getElementById('ci-plazo').value,accionInmediata:document.getElementById('ci-accion-inm').value,medidaCorr:document.getElementById('ci-medida-prop').value};
   if(!d.fecha||!d.area){alert('Completa los campos requeridos');return;}
-  if(tipo==='CondicionInsegura'){d.desc=document.getElementById('ci-desc-cond').value;d.equipo=document.getElementById('ci-equipo').value;d.foto=cifd;}
+  if(tipo==='CondicionInsegura'){d.desc=document.getElementById('ci-desc-cond').value;const eqSel=document.getElementById('ci-equipo').value;d.equipo=eqSel==='__otro'?document.getElementById('ci-equipo-otro').value.trim():eqSel;d.foto=cifd;}
   else{d.desc=document.getElementById('ai-desc-cond').value;d.actividadEjec=document.getElementById('ai-actividad').value;d.cargoTrab=document.getElementById('ai-cargo-trab').value;d.estandar=document.getElementById('ai-estandar').value;d.intervencion=document.getElementById('ai-intervencion').value;d.foto=aifd;}
   const r={tipo,folio:cnt(tipo),fecha:d.fecha,hora:d.hora,area:d.area,razonSocial:d.razonSocial,inspector:usuarioActivo.nombre,cargo:usuarioActivo.cargo||'',registro:usuarioActivo.registro||'',resumen:(tipo==='CondicionInsegura'?'CI':'AI')+' - Riesgo '+d.riesgo+' - '+(d.desc||'').substring(0,40),nivelRiesgo:d.riesgo,estadoMedida:'Pendiente',fechaCierre:'',tsVerif:'',fotoVerif:null,ts:Date.now(),...d};
   db.push(r);sv();eS(r);
@@ -2384,6 +2483,7 @@ function getNC(vista){
     if(r.tipo==='Caminata')(r.ncs||[]).forEach((n,ni)=>items.push({...n,item:n.item||n.it||'',_ri:riReal,_ni:ni,_folio:r.folio,_area:r.area,_fecha:r.fecha,_origen:'Caminata',_tipo:r.tipo}));
     if(r.tipo==='Observacion') items.push({item:r.resumen,estado:r.estadoMedida||'Pendiente',riesgo:'',encargado:'',plazo:r.plazo||'',comentario:r.comentarioVerif||'',fotoVerif:r.fotoVerif||null,tsVerif:r.tsVerif||'',_ri:riReal,_ni:-1,_folio:r.folio,_area:r.area,_fecha:r.fecha,_origen:'Observacion',_tipo:r.tipo});
     if(r.tipo==='CondicionInsegura'||r.tipo==='AccionInsegura') items.push({item:(r.desc||r.resumen||'').substring(0,80),estado:r.estadoMedida||'Pendiente',riesgo:r.riesgo||r.nivelRiesgo||'',encargado:r.encargado||'',plazo:r.plazo||'',comentario:r.comentarioVerif||'',fotoVerif:r.fotoVerif||null,tsVerif:r.tsVerif||'',_ri:riReal,_ni:-1,_folio:r.folio,_area:r.area,_fecha:r.fecha,_origen:r.tipo==='CondicionInsegura'?'Cond. insegura':'Acción insegura',_tipo:r.tipo});
+    if(r.tipo==='Hallazgo') items.push({item:(r.descripcion||r.resumen||'').substring(0,80),estado:r.estadoMedida||'Pendiente',riesgo:'',encargado:'',plazo:'',comentario:r.comentarioVerif||'',fotoVerif:r.fotoVerif||null,tsVerif:r.tsVerif||'',_ri:riReal,_ni:-1,_folio:r.folio,_area:r.area,_fecha:r.fecha,_origen:'Hallazgo',_tipo:r.tipo,_simple:true});
   });
   return items;
 }
@@ -2414,7 +2514,7 @@ function rHN(){
   const ab=soloCo||soloCe?[]:all.filter(n=>n.estado==='Pendiente'||n.estado==='En proceso');
   const co=soloAb||soloCe?[]:all.filter(n=>n.estado==='Ejecutada');
   const ce=soloAb||soloCo?[]:all.filter(n=>n.estado==='Verificada');
-  const oc={'Inspeccion':['#E6F1FB','#0C447C'],'Observacion':['#EAF3DE','#27500A'],'Cond. insegura':['#FCEBEB','#A32D2D'],'Acción insegura':['var(--orange-bg)','var(--orange)'],'Caminata':['#E8F0FB','#0F4C81']};
+  const oc={'Inspeccion':['#E6F1FB','#0C447C'],'Observacion':['#EAF3DE','#27500A'],'Cond. insegura':['#FCEBEB','#A32D2D'],'Acción insegura':['var(--orange-bg)','var(--orange)'],'Caminata':['#E8F0FB','#0F4C81'],'Hallazgo':['#F3E8FB','#6B21A8']};
   // Color del estado — recorrido pendiente(rojo) -> en proceso(naranja) -> ejecutada(amarillo) -> verificada(verde)
   const ESTADO_COLOR={'Pendiente':['var(--red-bg)','var(--red)'],'En proceso':['var(--orange-bg)','var(--orange)'],'Ejecutada':['var(--yellow-bg)','var(--yellow)'],'Verificada':['var(--green-bg)','var(--green)']};
 
@@ -2425,19 +2525,21 @@ function rHN(){
     const[obg,ocl]=oc[n._origen]||['#F1EFE8','#444'];
     const cer=n.estado==='Verificada';
     const[ebg,ecol]=ESTADO_COLOR[n.estado]||['var(--surface)','var(--text)'];
+    const etCerrado=n._simple?'Cerrado':'Verificada';
+    const opcionesEstado=n._simple?['Pendiente','Verificada']:['Pendiente','En proceso','Ejecutada','Verificada'];
     return `<div class="ncc" style="background:${bg};border-color:${bd}">
       <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:7px">
         <span style="font-size:10px;padding:2px 9px;border-radius:20px;font-weight:700;background:${obg};color:${ocl}">${n._origen}</span>
         <span class="folio-badge">${n._folio||'-'}</span>
         ${n.riesgo?`<span style="font-size:10px;padding:2px 9px;border-radius:20px;font-weight:700;background:${bg};color:${col};border:1px solid ${bd}">${n.riesgo}</span>`:''}
-        ${cer?`<span style="font-size:10px;padding:2px 9px;border-radius:20px;font-weight:700;background:var(--green-bg);color:var(--green);border:1px solid var(--green)">Verificada</span>`:''}
+        ${cer?`<span style="font-size:10px;padding:2px 9px;border-radius:20px;font-weight:700;background:var(--green-bg);color:var(--green);border:1px solid var(--green)">${etCerrado}</span>`:''}
       </div>
       <div style="font-size:14px;color:${col};font-weight:600;line-height:1.4;margin-bottom:4px">${n.item}</div>
       <div style="font-size:11px;color:${col};opacity:.8">${n._area} — ${n._fecha}${n.plazo?' — Plazo: '+n.plazo:''}</div>
       ${n.encargado?`<div style="font-size:11px;color:${col};opacity:.8;margin-top:2px">Encargado: ${n.encargado}</div>`:''}
-      ${cer&&n.tsVerif?`<div style="font-size:11px;color:var(--green);margin-top:4px;font-weight:600">Verificada: ${n.tsVerif}</div>`:''}
+      ${cer&&n.tsVerif?`<div style="font-size:11px;color:var(--green);margin-top:4px;font-weight:600">${etCerrado}: ${n.tsVerif}</div>`:''}
       <div style="display:flex;gap:6px;margin-top:10px;flex-wrap:wrap;align-items:center">
-        ${!cer?`<select style="font-size:12px;padding:7px 9px;border-radius:9px;border:1px solid ${bd};background:${ebg};color:${ecol};font-weight:600;font-family:inherit;margin-bottom:0;flex:1;min-width:0" onchange="sEN(${n._ri},${n._ni},this.value)">${['Pendiente','En proceso','Ejecutada','Verificada'].map(e=>`<option ${n.estado===e?'selected':''}>${e}</option>`).join('')}</select>`:''}
+        ${!cer?`<select style="font-size:12px;padding:7px 9px;border-radius:9px;border:1px solid ${bd};background:${ebg};color:${ecol};font-weight:600;font-family:inherit;margin-bottom:0;flex:1;min-width:0" onchange="sEN(${n._ri},${n._ni},this.value)">${opcionesEstado.map(e=>`<option value="${e}" ${n.estado===e?'selected':''}>${e==='Verificada'?etCerrado:e}</option>`).join('')}</select>`:''}
         <button class="btn-sm" onclick="tV('vp${gi}')"><i class="ti ti-camera"></i> ${cer?'Ver evidencia':'Evidencia'}</button>
         <button class="btn-sm" onclick="verInforme(${n._ri},'s-hist-nc')"><i class="ti ti-eye"></i> Ver</button>
         <button class="btn-sm" onclick="rPDF(${n._ri})"><i class="ti ti-file-text"></i> PDF</button>
@@ -2493,6 +2595,8 @@ function rHN(){
       const origen=items[0]._origen;
       const[obg,ocl]=oc[origen]||['#F1EFE8','#444'];
       const expanded=ncInformesExpandidos.has(ri);
+      const tChk=r.tipo==='Inspeccion'?tituloChecklist(r.clKey):'';
+      const lugar=r.area+(r.seccion?' — '+r.seccion:'');
       const cuerpo=expanded?`<div style="margin-top:10px">${items.map(n=>rN(n,'inf'+(giInforme++))).join('')}</div>`:'';
       return `<div class="hi" style="margin-bottom:10px">
         <div style="display:flex;justify-content:space-between;align-items:center;cursor:pointer" onclick="toggleInformeNC(${ri})">
@@ -2501,8 +2605,8 @@ function rHN(){
               <span style="font-size:10px;padding:2px 9px;border-radius:20px;font-weight:700;background:${obg};color:${ocl}">${origen}</span>
               <span class="folio-badge">${r.folio||'-'}</span>
             </div>
-            <div style="font-size:14px;font-weight:600;color:var(--text)">${r.area}${r.seccion?' — '+r.seccion:''}</div>
-            <div style="font-size:11px;color:var(--muted);margin-top:2px">${r.fecha} — ${abiertasInf} abierta(s) de ${items.length}</div>
+            <div style="font-size:14px;font-weight:600;color:var(--text)">${tChk||lugar}</div>
+            <div style="font-size:11px;color:var(--muted);margin-top:1px">${tChk?lugar+' — ':''}${r.fecha} — ${abiertasInf} abierta(s) de ${items.length}</div>
           </div>
           <i class="ti ti-chevron-${expanded?'up':'down'}" style="font-size:22px;color:var(--muted);flex-shrink:0"></i>
         </div>
@@ -2547,6 +2651,7 @@ function gEv(ri,ni,gi,inp){
     if(ni>=0){db[ri].ncs[ni].fotoVerif=d;db[ri].ncs[ni].tsVerif=ts;}
     else{db[ri].fotoVerif=d;db[ri].tsVerif=ts;}
     sv();cinfo('vfi'+gi,o,c);rHN();
+    alert('Foto de evidencia cargada. No olvides tocar "Guardar" para dejar también el comentario.');
   });
 }
 
@@ -2555,6 +2660,7 @@ function gCV(ri,ni,gi){
   if(ni>=0)db[ri].ncs[ni].comentario=com;else db[ri].comentarioVerif=com;
   recalcularEstadoInspeccion(ri);
   sv();eS({...db[ri],_update:true});rHN();
+  alert('Comentario y evidencia guardados.');
 }
 
 function elNC(ri,ni){
@@ -2582,6 +2688,7 @@ function rHI(){
     (r.inspector||'').toLowerCase().includes(q) ||
     (r.razonSocial||'').toLowerCase().includes(q) ||
     (r.resumen||'').toLowerCase().includes(q) ||
+    (r.tipo==='Inspeccion'&&tituloChecklist(r.clKey).toLowerCase().includes(q)) ||
     (r.fecha||'').toLowerCase().includes(q)
   );
   if(!lista.length){cont.innerHTML='<div style="font-size:13px;color:var(--muted);padding:8px 0">Sin registros</div>';return;}
@@ -2590,6 +2697,8 @@ function rHI(){
     const ri=db.indexOf(r);
     const[bg,col,lb]=cfg[r.tipo]||['#F1EFE8','#444','Registro'];
     const nc=(r.tipo==='Inspeccion'&&r.ncs)?r.ncs.length:0;
+    const tChk=r.tipo==='Inspeccion'?tituloChecklist(r.clKey):'';
+    const lugar=r.area+(r.seccion?' — '+r.seccion:'');
     return `<div class="hi">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:7px;gap:6px">
         <div style="display:flex;align-items:center;gap:5px;flex-wrap:wrap">
@@ -2605,7 +2714,8 @@ function rHI(){
           <button class="btn-sm-danger" onclick="tCB('di${ri}')"><i class="ti ti-trash"></i></button>
         </div>
       </div>
-      <div style="font-size:14px;font-weight:600;color:var(--text)">${r.area}${r.seccion?' — '+r.seccion:''}</div>
+      <div style="font-size:14px;font-weight:600;color:var(--text)">${tChk||lugar}</div>
+      ${tChk?`<div style="font-size:12px;color:var(--muted);margin-top:1px">${lugar}</div>`:''}
       ${r.razonSocial?`<div style="font-size:11px;color:var(--muted);margin-top:2px">${r.razonSocial.split(' ').slice(0,4).join(' ')}...</div>`:''}
       <div style="font-size:12px;color:var(--muted);margin-top:2px">${r.inspector} — ${r.resumen}</div>
       ${nc>0?`<div style="font-size:11px;color:var(--red);margin-top:3px">${nc} NC detectada(s)</div>`:''}
@@ -2710,6 +2820,48 @@ function verInforme(ri,origen){
     <div class="fl">Encargado / Plazo</div><div style="margin-bottom:8px">${r.encargado||'-'} — ${r.plazo||'-'}</div>`;
   }
 
+  if(r.tipo==='Caminata'){
+    const items=r.camItems||[];
+    const cumple=items.filter(x=>x.cumple==='S').length,noCumple=items.filter(x=>x.cumple==='N').length,noAplica=items.filter(x=>x.aplica==='N').length;
+    html+=`<div class="fl">Tipo de recorrido</div><div style="margin-bottom:8px">${r.tipoCaminata||'Programado'}</div>
+    <div style="display:flex;gap:6px;margin-bottom:12px">
+      <span class="badge" style="background:var(--green-bg);color:var(--green)">Cumple: ${cumple}</span>
+      <span class="badge" style="background:var(--red-bg);color:var(--red)">No cumple: ${noCumple}</span>
+      <span class="badge" style="background:#E6F1FB;color:#0C447C">N/A: ${noAplica}</span>
+    </div>`;
+    if(r.obs) html+=`<div style="margin-bottom:8px"><div class="fl">Observaciones generales</div><div>${r.obs}</div></div>`;
+    if(r.firmaTerceroNombre) html+=`<div class="fl">Firma de conformidad</div><div style="margin-bottom:8px">${r.firmaTerceroNombre}${r.firmaTerceroCargo?' — '+r.firmaTerceroCargo:''}</div>`;
+    if(r.ncs&&r.ncs.length){
+      html+=`<div class="sec-div"><i class="ti ti-alert-circle" style="color:var(--red)"></i> No conformidades (${r.ncs.length})</div>`;
+      r.ncs.forEach((n,i)=>{
+        html+=`<div style="background:var(--surface2);border-radius:9px;padding:10px;margin-bottom:8px">
+          <div style="font-weight:600;margin-bottom:4px">NC ${i+1}: ${n.item||n.it||''}</div>
+          <div style="font-size:11px;color:var(--muted)">Riesgo: ${n.riesgo||'-'} · Encargado: ${n.encargado||n.enc||'-'} · Plazo: ${n.plazo||'-'} · Estado: ${n.estado||'Pendiente'}</div>
+        </div>`;
+      });
+    }
+  }
+
+  if(r.tipo==='Hallazgo'){
+    html+=`<div class="fl">Descripción del hallazgo</div><div style="margin-bottom:8px">${r.descripcion||'-'}</div>
+    <div class="fl">Propuesta de mejora</div><div style="margin-bottom:8px">${r.propuestaMejora||'Sin propuesta registrada'}</div>
+    <div class="fl">Estado</div><div style="margin-bottom:8px">${r.estadoMedida||'Pendiente'}${r.tsVerif?' — Cerrado: '+r.tsVerif:''}</div>`;
+    if(r.comentarioVerif) html+=`<div class="fl">Comentario de cierre</div><div style="margin-bottom:8px">${r.comentarioVerif}</div>`;
+    (r.fotosHallazgo||[]).forEach(f=>html+=`<img src="${f}" style="max-width:100%;border-radius:8px;margin-bottom:8px">`);
+  }
+
+  if(r.tipo==='Inspeccion'&&r.clKey==='001B'){
+    const exts=r.extList||[];
+    html+=`<div class="fl">Extintores inspeccionados</div><div style="margin-bottom:8px">${exts.length}</div>`;
+    exts.forEach((e,i)=>{
+      const ncs=Object.values(e.conds||{}).filter(v=>v==='NO').length;
+      html+=`<div style="background:var(--surface2);border-radius:9px;padding:10px;margin-bottom:8px">
+        <div style="font-weight:600">Extintor ${e.num||i+1}${e.ubic?' — '+e.ubic:''}</div>
+        <div style="font-size:11px;color:${ncs>0?'var(--red)':'var(--green)'}">${ncs>0?ncs+' NC':'Conforme'}</div>
+      </div>`;
+    });
+  }
+
   if(r.foto) html+=`<div class="fl">Fotografía</div><img src="${r.foto}" style="max-width:100%;border-radius:8px;margin-bottom:8px">`;
 
   document.getElementById('preview-content').innerHTML=html;
@@ -2728,13 +2880,35 @@ function enviarDesdePreview(){
   enviarInformePorCorreo(previewRi);
 }
 
+// Envía un registro a Sheets y ESPERA confirmación real del servidor.
+// Detalle técnico: Apps Script no maneja el preflight OPTIONS que dispara una
+// petición CORS con Content-Type application/json. Enviando como text/plain, el
+// navegador la trata como petición "simple" (sin preflight) y sí podemos leer la
+// respuesta. Así "Sincronizado" pasa a significar que Sheets confirmó la
+// escritura, no solo que el mensaje salió del dispositivo.
+// Devuelve {ok:true, ...datos} si el servidor confirmó, o {ok:false, error} si no.
 async function eS(r){
   const d=document.getElementById('ssd'),t=document.getElementById('sst');
-  d.className='sdot pend';t.textContent='Sincronizando...';
+  if(d&&t){d.className='sdot pend';t.textContent='Sincronizando...';}
   try{
-    await fetch(SHEETS_URL,{method:'POST',body:JSON.stringify(r),headers:{'Content-Type':'application/json'},mode:'no-cors'});
-    d.className='sdot';t.textContent='Sincronizado';
-  }catch(e){d.className='sdot err';t.textContent='Sin conexión — guardado local';}
+    const resp=await fetch(SHEETS_URL,{
+      method:'POST',
+      body:JSON.stringify(r),
+      headers:{'Content-Type':'text/plain;charset=utf-8'},
+      mode:'cors'
+    });
+    const data=await resp.json();
+    if(data&&data.ok){
+      if(d&&t){d.className='sdot';t.textContent='Sincronizado';}
+      return data;
+    }else{
+      if(d&&t){d.className='sdot err';t.textContent='Error en el servidor';}
+      return {ok:false,error:(data&&data.error)||'respuesta no OK'};
+    }
+  }catch(e){
+    if(d&&t){d.className='sdot err';t.textContent='Sin conexión — guardado local';}
+    return {ok:false,error:e.toString()};
+  }
 }
 
 // Reenvía manualmente un registro ya guardado a Google Sheets (por si el envío
@@ -2746,8 +2920,13 @@ async function reenviarASheet(ri, btnEl){
   const original=btnEl.innerHTML;
   btnEl.innerHTML='<i class="ti ti-loader-2"></i> Enviando...';
   btnEl.disabled=true;
-  await eS(r);
-  btnEl.innerHTML='<i class="ti ti-check"></i> Enviado';
+  const res=await eS(r);
+  if(res&&res.ok){
+    btnEl.innerHTML='<i class="ti ti-check"></i> Enviado';
+  }else{
+    btnEl.innerHTML='<i class="ti ti-alert-triangle"></i> Falló';
+    alert('No se pudo confirmar el envío a Sheets.\n\n'+((res&&res.error)||'')+'\n\nEl registro sigue guardado en el dispositivo. Intenta de nuevo cuando tengas mejor conexión.');
+  }
   setTimeout(()=>{btnEl.innerHTML=original;btnEl.disabled=false;},2500);
 }
 
@@ -2797,7 +2976,7 @@ async function guardarConfigAlertas(){
   const status=document.getElementById('cfg-status');
   status.textContent='Guardando...';status.classList.add('open');
   try{
-    await fetch(SHEETS_URL,{method:'POST',body:JSON.stringify({
+    const resp=await fetch(SHEETS_URL,{method:'POST',body:JSON.stringify({
       _action:'setConfig',
       config:{
         correos_alerta:correos,
@@ -2805,30 +2984,88 @@ async function guardarConfigAlertas(){
         dias_aviso_vencimiento:dias,
         alertas_activas:alertasActivasVal?'SI':'NO'
       }
-    }),headers:{'Content-Type':'application/json'},mode:'no-cors'});
-    status.textContent='Configuración guardada correctamente.';
-    setTimeout(()=>{status.classList.remove('open');gt('s-usuarios');},1200);
+    }),headers:{'Content-Type':'text/plain;charset=utf-8'},mode:'cors'});
+    const data=await resp.json();
+    if(data&&data.ok){
+      status.textContent='Configuración guardada correctamente.';
+      setTimeout(()=>{status.classList.remove('open');gt('s-usuarios');},1200);
+    }else{
+      status.textContent='El servidor no confirmó el guardado. Intenta de nuevo.';
+    }
   }catch(e){
     status.textContent='Error al guardar. Verifica tu conexión.';
   }
 }
 
 // === ENVIAR PDF POR CORREO DESDE LA APP ===
+let correoPendienteRi=null, correoOrigenPantalla='s-home';
+
 function enviarInformePorCorreo(ri){
-  const r=db[ri];if(!r)return;
-  const destinatario=prompt('Correo del destinatario:');
-  if(!destinatario)return;
+  const r=db[ri]; if(!r) return;
+  correoPendienteRi=ri;
+  const activa=document.querySelector('.scr.active');
+  correoOrigenPantalla=activa?activa.id:'s-home';
+  document.getElementById('env-correo-folio').textContent='Informe '+(r.folio||'')+' — '+(r.area||'');
+  document.getElementById('env-correo-para').value='';
+  document.getElementById('env-correo-cc').value='';
+  cargarCatCorreos();
+  const chip=(campoId,correo)=>`<button type="button" class="btn-sm" style="background:var(--surface2)" onclick="agregarCorreoA('${campoId}','${correo}')">+ ${correo}</button>`;
+  document.getElementById('env-correo-frecuentes-para').innerHTML=
+    CAT_CORREOS.length?CAT_CORREOS.map(c=>chip('env-correo-para',c.correo)).join(''):
+    '<div style="font-size:12px;color:var(--muted)">Sin correos frecuentes guardados (Usuarios → Correos frecuentes).</div>';
+  document.getElementById('env-correo-frecuentes-cc').innerHTML=CAT_CORREOS.map(c=>chip('env-correo-cc',c.correo)).join('');
+  gt('s-enviar-correo');
+}
+
+function agregarCorreoA(campoId,correo){
+  const inp=document.getElementById(campoId);
+  const actuales=inp.value.split(',').map(s=>s.trim()).filter(Boolean);
+  if(!actuales.some(c=>c.toLowerCase()===correo.toLowerCase())){
+    actuales.push(correo);
+    inp.value=actuales.join(', ');
+  }
+}
+
+function cancelarEnvioCorreo(){
+  correoPendienteRi=null;
+  gt(correoOrigenPantalla);
+}
+
+async function confirmarEnvioCorreo(){
+  if(correoPendienteRi===null) return;
+  const r=db[correoPendienteRi]; if(!r){cancelarEnvioCorreo();return;}
+  const destinatario=document.getElementById('env-correo-para').value.trim();
+  const cc=document.getElementById('env-correo-cc').value.trim();
+  if(!destinatario){alert('Ingresa al menos un destinatario en "Para".');return;}
+  const btn=document.querySelector('#s-enviar-correo .btn-orange');
+  const orig=btn?btn.innerHTML:'';
+  if(btn){btn.innerHTML='<i class="ti ti-loader-2"></i> Enviando...';btn.disabled=true;}
   const pdfBase64=generarPDFBase64(tipoPDFde(r),r);
-  fetch(SHEETS_URL,{method:'POST',body:JSON.stringify({
-    _action:'enviarPDF',
-    destinatario,
-    pdfBase64,
-    nombreArchivo:'DAP_'+(r.folio||'Informe')+'.pdf',
-    remitenteNombre:usuarioActivo?usuarioActivo.nombre:'',
-    remitenteCorreo:usuarioActivo?usuarioActivo.correo:'',
-    folio:r.folio||''
-  }),headers:{'Content-Type':'application/json'},mode:'no-cors'});
-  alert('Informe enviado a '+destinatario+' (puede tardar unos segundos en llegar).');
+  try{
+    const resp=await fetch(SHEETS_URL,{method:'POST',body:JSON.stringify({
+      _action:'enviarPDF',
+      destinatario,
+      cc,
+      pdfBase64,
+      nombreArchivo:'DAP_'+(r.folio||'Informe')+'.pdf',
+      remitenteNombre:usuarioActivo?usuarioActivo.nombre:'',
+      remitenteCorreo:usuarioActivo?usuarioActivo.correo:'',
+      folio:r.folio||''
+    }),headers:{'Content-Type':'text/plain;charset=utf-8'},mode:'cors'});
+    const data=await resp.json();
+    if(data&&data.ok){
+      alert('Informe enviado a '+destinatario+(cc?' (CC: '+cc+')':'')+'.');
+      const origen=correoOrigenPantalla;
+      correoPendienteRi=null;
+      gt(origen);
+    }else{
+      if(btn){btn.innerHTML=orig;btn.disabled=false;}
+      alert('No se pudo confirmar el envío.\n\n'+((data&&data.error)||'')+'\n\nRevisa la conexión e intenta de nuevo.');
+    }
+  }catch(e){
+    if(btn){btn.innerHTML=orig;btn.disabled=false;}
+    alert('No se pudo enviar el correo. Verifica tu conexión e intenta de nuevo.');
+  }
 }
 
 // PDF
@@ -2853,7 +3090,16 @@ function construirDocPDF(tipo,d){
   const doc=new jsPDF({unit:'mm',format:'a4'});
   const W=210,M=15;let y=0;
   const em=fh();
-  const usr=usuarioActivo||{nombre:d.inspector||'',cargo:d.cargo||'',registro:d.registro||'',firma:null};
+  // La firma del PDF debe ser la de quien CREÓ el registro, no la del usuario
+  // logueado en este momento. Si un admin regenera el PDF de un informe hecho
+  // por otro inspector, debe salir la firma del inspector original. Se busca por
+  // nombre en la lista de usuarios; si no se encuentra (usuario eliminado), se
+  // cae al usuario activo como respaldo.
+  let usr=null;
+  if(d.inspector && Array.isArray(usuarios)){
+    usr=usuarios.find(u=>u.nombre===d.inspector)||null;
+  }
+  if(!usr) usr=usuarioActivo||{nombre:d.inspector||'',cargo:d.cargo||'',registro:d.registro||'',firma:null};
 
   // ENCABEZADO NEGRO DAP
   doc.setFillColor(26,26,26);doc.rect(0,0,W,35,'F');
@@ -2915,6 +3161,25 @@ function construirDocPDF(tipo,d){
       }
       y+=h+4;
     }
+  };
+
+  // Encabezado de sección seguido inmediatamente de una imagen (ej. "FOTOGRAFIA").
+  // Si se evalúan por separado, el encabezado puede quedar al fondo de una
+  // página y la imagen saltar a la siguiente, sola — por eso se mide el
+  // espacio total ANTES de dibujar nada.
+  const aSeccionImg=(titulo,src,h=60)=>{
+    if(!src)return;
+    if(y+9+h>260){doc.addPage();y=15;}
+    aS(titulo);
+    aImgFull(src,h);
+  };
+  // Igual que arriba, pero para la barra verde de "EVIDENCIA DE CIERRE".
+  const aBarraImg=(titulo,src,h=60)=>{
+    if(!src)return;
+    if(y+10+h>260){doc.addPage();y=15;}
+    y+=2;doc.setFillColor(234,243,222);doc.rect(M,y-2,W-M*2,7,'F');
+    doc.setFont('helvetica','bold');doc.setFontSize(7.5);doc.setTextColor(39,80,10);
+    doc.text(titulo,M+2,y+2);y+=8;aImgFull(src,h);
   };
 
   aS('DATOS GENERALES');
@@ -2996,6 +3261,27 @@ function construirDocPDF(tipo,d){
       if(x.obs){if(y>260){doc.addPage();y=15;}doc.setFontSize(7);doc.setTextColor(80,80,80);doc.text('Obs: '+san(x.obs),M+4,y);doc.setTextColor(26,26,26);y+=4;}
       if(x.foto){if(y+40>260){doc.addPage();y=15;}try{doc.addImage(x.foto,'JPEG',M+4,y,55,40);y+=44;}catch(e){}}
     });
+    const nsCam=d.ncs||[];
+    if(nsCam.length){
+      y+=3;aS('NO CONFORMIDADES DE ESTA CAMINATA');
+      nsCam.forEach((n,i)=>{
+        if(y>250){doc.addPage();y=15;}
+        const nrgb=n.riesgo==='Tolerable'?[234,243,222]:n.riesgo==='Moderado'?[250,238,218]:n.riesgo==='Importante'?[250,236,231]:[252,235,235];
+        doc.setFillColor(...nrgb);doc.rect(M,y-3,W-M*2,9,'F');
+        doc.setFont('helvetica','bold');doc.setFontSize(8.5);doc.setTextColor(...(n.riesgo==='Tolerable'?[39,80,10]:n.riesgo==='Moderado'?[99,56,6]:n.riesgo==='Importante'?[113,43,19]:[192,36,26]));
+        doc.text(san('NC '+(i+1)+': '+(n.item||'')).substring(0,95),M+2,y+3);y+=11;
+        aF('  Nivel de riesgo',n.riesgo||'No asignado');
+        aF('  Resp. ejecucion',n.respEjec||'-');
+        aF('  Encargado seguimiento',n.encargado||'-');
+        aF('  Plazo',n.plazo||'-');
+        aF('  Estado',n.estado||'Pendiente');
+        if(n.tsVerif)aF('  Verificado',n.tsVerif);
+        if(n.comentario)aT('  Comentario',n.comentario);
+        if(n.foto){if(y+40>260){doc.addPage();y=15;}try{doc.addImage(n.foto,'JPEG',M+3,y,55,40);y+=44;}catch(e){}}
+        if(n.fotoVerif) aBarraImg('EVIDENCIA DE CIERRE — '+san(n.tsVerif||''),n.fotoVerif,55);
+        y+=3;
+      });
+    }
   }
   if(tipo==='hallazgo'){
     y+=3;aS('DESCRIPCION DEL HALLAZGO');
@@ -3010,6 +3296,11 @@ function construirDocPDF(tipo,d){
       y+=2;
       aImgRow(d.fotosPropuesta,60);
     }
+    y+=3;aS('SEGUIMIENTO');
+    aF('Estado actual',d.estadoMedida||'Pendiente');
+    if(d.tsVerif)aF('Cerrado',d.tsVerif);
+    if(d.comentarioVerif){y+=2;aT('Comentario de cierre',d.comentarioVerif);}
+    if(d.fotoVerif) aBarraImg('EVIDENCIA DE CIERRE — '+san(d.tsVerif||''),d.fotoVerif,68);
   }
   if(tipo==='extintores'){
     const addPg=()=>{doc.addPage();y=18;};
@@ -3066,8 +3357,10 @@ function construirDocPDF(tipo,d){
         aF('  Encargado seguimiento',n.encargado||'-');
         aF('  Plazo',n.plazo||'-');
         aF('  Estado',n.estado||'Pendiente');
+        if(n.tsVerif)aF('  Verificado',n.tsVerif);
         if(n.comentario)aT('  Comentario',n.comentario);
         if(n.foto){if(y+40>260){doc.addPage();y=15;}try{doc.addImage(n.foto,'JPEG',M+3,y,55,40);y+=44;}catch(e){}}
+        if(n.fotoVerif) aBarraImg('EVIDENCIA DE CIERRE — '+san(n.tsVerif||''),n.fotoVerif,55);
         y+=3;
       });
     }
@@ -3078,12 +3371,9 @@ function construirDocPDF(tipo,d){
     aF('Razon social',d.razonSocial||'-');aF('Puesto observado',d.puesto);aF('Tipo de conducta',d.tipo_conducta||d.tipo);aF('Categoria',d.cat);
     aT('Descripcion',d.desc);aT('Accion tomada en terreno',d.accion);aF('Estado',d.estadoMedida||'Pendiente');
     if(d.tsVerif)aF('Verificado',d.tsVerif);
-    if(d.foto){y+=3;aS('FOTOGRAFIA');aImgFull(d.foto);}
-    if(d.fotoVerif){
-      y+=2;doc.setFillColor(234,243,222);doc.rect(M,y-2,W-M*2,7,'F');
-      doc.setFont('helvetica','bold');doc.setFontSize(7.5);doc.setTextColor(39,80,10);
-      doc.text('EVIDENCIA DE CIERRE — '+san(d.tsVerif||''),M+2,y+2);y+=8;aImgFull(d.fotoVerif);
-    }
+    if(d.foto) aSeccionImg('FOTOGRAFIA',d.foto);
+    if(d.comentarioVerif){y+=2;aT('Comentario de verificación',d.comentarioVerif);}
+    if(d.fotoVerif) aBarraImg('EVIDENCIA DE CIERRE — '+san(d.tsVerif||''),d.fotoVerif);
   }
 
   if(tipo==='ci'||tipo==='ai'){
@@ -3108,12 +3398,9 @@ function construirDocPDF(tipo,d){
     aF('Encargado de seguimiento',d.encargado||'-');
     aF('Plazo comprometido',d.plazo||'-');aF('Estado actual',d.estadoMedida||'Pendiente');
     if(d.tsVerif)aF('Verificado',d.tsVerif);
-    if(d.foto){y+=3;aS('FOTOGRAFIA');aImgFull(d.foto,68);}
-    if(d.fotoVerif){
-      y+=2;doc.setFillColor(234,243,222);doc.rect(M,y-2,W-M*2,7,'F');
-      doc.setFont('helvetica','bold');doc.setFontSize(7.5);doc.setTextColor(39,80,10);
-      doc.text('EVIDENCIA DE CIERRE — '+san(d.tsVerif||''),M+2,y+2);y+=8;aImgFull(d.fotoVerif,68);
-    }
+    if(d.foto) aSeccionImg('FOTOGRAFIA',d.foto,68);
+    if(d.comentarioVerif){y+=2;aT('Comentario de verificación',d.comentarioVerif);}
+    if(d.fotoVerif) aBarraImg('EVIDENCIA DE CIERRE — '+san(d.tsVerif||''),d.fotoVerif,68);
   }
 
   // PIE — coordenadas absolutas fijas desde el fondo de la página
@@ -3198,21 +3485,38 @@ function expCSV(){
   let N='Folio Insp\tFecha\tArea\tInspector\tItem NC\tCategoria\tNivel Riesgo\tResp Ejecucion\tEncargado\tPlazo\tComentario\tEstado\tVerificado\n';
   let O='Folio\tFecha\tHora\tRazon Social\tArea\tSeccion\tInspector\tCargo\tPuesto\tTipo Conducta\tCategoria\tDescripcion\tAccion Tomada\tEstado\tVerificado\n';
   let C='Folio\tFecha\tHora\tTipo\tRazon Social\tArea\tSeccion\tInspector\tDescripcion\tGravedad\tConsecuencia\tEncargado\tPlazo\tAccion Inm\tMedida Corr\tEstado\tVerificado\n';
+  let CAM='Folio\tFecha\tHora\tRazon Social\tArea\tTipo Caminata\tInspector\tCargo\tCumple\tNo Cumple\tNo Aplica\tEstado\tVerificado\tObservaciones\n';
+  let HAL='Folio\tFecha\tHora\tRazon Social\tArea\tSeccion\tInspector\tCargo\tDescripcion\tN Fotos Hallazgo\tPropuesta Mejora\tN Fotos Propuesta\tEstado\tVerificado\n';
   const c=v=>(v||'').toString().replace(/\t/g,' ').replace(/\n/g,' ');
   db.forEach(r=>{
     if(r.tipo==='Inspeccion'){
-      const cl=r.clItems||[];const ok=cl.filter(x=>x.resp==='OK').length,nc=cl.filter(x=>x.resp==='NC').length,na=cl.filter(x=>x.resp==='NA').length;
+      let ok=0,nc=0,na=0;
+      if(r.clKey==='001B'){
+        // Extintores no tiene clItems (usa extList por extintor) — se cuenta distinto
+        (r.extList||[]).forEach(e=>Object.values(e.conds||{}).forEach(v=>{if(v==='SI')ok++;else if(v==='NO')nc++;else if(v==='NA')na++;}));
+      }else{
+        const cl=r.clItems||[];ok=cl.filter(x=>x.resp==='OK').length;nc=cl.filter(x=>x.resp==='NC').length;na=cl.filter(x=>x.resp==='NA').length;
+      }
       I+=[c(r.folio),c(r.fecha),c(r.hora),c(r.razonSocial),c(r.area),c(r.seccion),c(r.turno),c(r.inspector),c(r.cargo),ok,nc,na,c(r.estadoMedida),c(r.tsVerif),c(r.obs)].join(sep)+'\n';
       (r.ncs||[]).forEach(n=>N+=[c(r.folio),c(r.fecha),c(r.area),c(r.inspector),c(n.item||n.it),c(n.cat),c(n.riesgo),c(n.respEjec||n.re),c(n.encargado||n.enc),c(n.plazo),c(n.comentario||n.com),c(n.estado),c(n.tsVerif||n.tv)].join(sep)+'\n');
     }
     if(r.tipo==='Observacion') O+=[c(r.folio),c(r.fecha),c(r.hora),c(r.razonSocial),c(r.area),c(r.seccion),c(r.inspector),c(r.cargo),c(r.puesto),c(r.tipo_conducta||r.tipo),c(r.cat),c(r.desc),c(r.accion),c(r.estadoMedida),c(r.tsVerif)].join(sep)+'\n';
     if(r.tipo==='CondicionInsegura'||r.tipo==='AccionInsegura') C+=[c(r.folio),c(r.fecha),c(r.hora),c(r.tipo),c(r.razonSocial),c(r.area),c(r.seccion),c(r.inspector),c(r.desc),c(r.riesgo),c(r.consecuencia),c(r.encargado),c(r.plazo),c(r.accionInmediata||r.medida),c(r.medidaCorr),c(r.estadoMedida),c(r.tsVerif)].join(sep)+'\n';
+    if(r.tipo==='Caminata'){
+      const items=r.camItems||[];
+      const cumple=items.filter(x=>x.cumple==='S').length,noCumple=items.filter(x=>x.cumple==='N').length,noAplica=items.filter(x=>x.aplica==='N').length;
+      CAM+=[c(r.folio),c(r.fecha),c(r.hora),c(r.razonSocial),c(r.area),c(r.tipoCaminata),c(r.inspector),c(r.cargo),cumple,noCumple,noAplica,c(r.estadoMedida),c(r.tsVerif),c(r.obs)].join(sep)+'\n';
+      (r.ncs||[]).forEach(n=>N+=[c(r.folio),c(r.fecha),c(r.area),c(r.inspector),c(n.item||n.it),c(n.cat),c(n.riesgo),c(n.respEjec||n.re),c(n.encargado||n.enc),c(n.plazo),c(n.comentario||n.com),c(n.estado),c(n.tsVerif||n.tv)].join(sep)+'\n');
+    }
+    if(r.tipo==='Hallazgo') HAL+=[c(r.folio),c(r.fecha),c(r.hora),c(r.razonSocial),c(r.area),c(r.seccion),c(r.inspector),c(r.cargo),c(r.descripcion),(r.fotosHallazgo||[]).length,c(r.propuestaMejora),(r.fotosPropuesta||[]).length,c(r.estadoMedida),c(r.tsVerif)].join(sep)+'\n';
   });
   const dl=(n,ct)=>{const b=new Blob([B+ct],{type:'text/csv;charset=utf-8;'});const a=document.createElement('a');a.href=URL.createObjectURL(b);a.download=n;document.body.appendChild(a);a.click();document.body.removeChild(a);};
   dl('DAP_Inspecciones.csv',I);
   setTimeout(()=>dl('DAP_NC_Correctivas.csv',N),600);
   setTimeout(()=>dl('DAP_Observaciones.csv',O),1200);
   setTimeout(()=>dl('DAP_CI_AI.csv',C),1800);
+  setTimeout(()=>dl('DAP_Caminatas.csv',CAM),2400);
+  setTimeout(()=>dl('DAP_Hallazgos.csv',HAL),3000);
 }
 
 ld();rH();
