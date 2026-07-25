@@ -816,6 +816,8 @@ textarea{min-height:74px;resize:vertical}
   <button class="btn-sm" onclick="gt('s-hal-init')" style="margin-bottom:10px"><i class="ti ti-arrow-left"></i> Volver</button>
   <div class="page-title">SSO-REC-002 — Hallazgo abierto</div>
 
+  <label class="fl">Título del hallazgo</label>
+  <input type="text" id="hal-titulo" placeholder="Ej: Cable suelto en pasillo, Falta señalética..." maxlength="60">
   <label class="fl">Descripción de lo observado</label>
   <textarea id="hal-desc" placeholder="Describe la condición, evento o hallazgo detectado..." style="min-height:90px"></textarea>
   <div class="fbtn" onclick="document.getElementById('hal-foto-hallazgo').click()"><i class="ti ti-camera" style="font-size:20px"></i><span id="hal-foto-hallazgo-lbl">Adjuntar foto(s) del hallazgo</span></div>
@@ -1690,7 +1692,8 @@ function estaCerrado(r){
 // el registro queda intacto con sus fotos para reintentar más tarde.
 async function intentarArchivarEnDrive(ri){
   const r=db[ri];
-  if(!r||r.driveUrl||!estaCerrado(r)) return {ok:false,motivo:'no-aplica'};
+  if(!r||r.driveUrl||r._archivando||!estaCerrado(r)) return {ok:false,motivo:'no-aplica'};
+  r._archivando=true; // evita que dos llamadas en paralelo suban el mismo informe dos veces
   try{
     const pdfBase64=generarPDFBase64(tipoPDFde(r),r);
     const resp=await fetch(SHEETS_URL,{method:'POST',body:JSON.stringify({
@@ -1707,12 +1710,15 @@ async function intentarArchivarEnDrive(ri){
       // las fotos locales — nunca antes de tener la confirmación.
       const limpio=quitarFotosObj(r);
       Object.keys(limpio).forEach(k=>{r[k]=limpio[k];});
-      r.driveUrl=data.driveUrl; // quitarFotosObj no toca este campo, pero por claridad
+      r.driveUrl=data.driveUrl;
+      delete r._archivando;
       sv();rHN();rHI();
       return {ok:true,driveUrl:data.driveUrl};
     }
+    delete r._archivando;
     return {ok:false,motivo:(data&&data.error)||'sin confirmación del servidor'};
   }catch(e){
+    delete r._archivando;
     return {ok:false,motivo:'sin conexión'};
   }
 }
@@ -1735,6 +1741,7 @@ async function archivarManualmente(ri,btnEl){
 function exportarRegistros(conFotos){
   if(!db.length){alert('No hay registros para exportar.');return;}
   let regs=JSON.parse(JSON.stringify(db));
+  regs.forEach(r=>{delete r._archivando;}); // flag interno, no debe exportarse
   if(!conFotos) regs=regs.map(quitarFotosObj);
   const payload={_tipo:'DAP_registros_export',_version:1,_fecha:hoy()+' '+hora(),_conFotos:!!conFotos,_cantidad:regs.length,registros:regs};
   const blob=new Blob([JSON.stringify(payload)],{type:'application/json'});
@@ -2657,7 +2664,7 @@ function rHN(){
       const origen=items[0]._origen;
       const[obg,ocl]=oc[origen]||['#F1EFE8','#444'];
       const expanded=ncInformesExpandidos.has(ri);
-      const tChk=r.tipo==='Inspeccion'?tituloChecklist(r.clKey):'';
+      const tChk=r.tipo==='Inspeccion'?tituloChecklist(r.clKey):r.tipo==='Hallazgo'?(r.titulo||''):'';
       const lugar=r.area+(r.seccion?' — '+r.seccion:'');
       const cuerpo=expanded?`<div style="margin-top:10px">${items.map(n=>rN(n,'inf'+(giInforme++))).join('')}</div>`:'';
       return `<div class="hi" style="margin-bottom:10px">
@@ -2701,10 +2708,14 @@ function recalcularEstadoInspeccion(ri){
   }
 }
 
-function sEN(ri,ni,e){
+async function sEN(ri,ni,e){
   if(ni>=0){db[ri].ncs[ni].estado=e;if(e==='Verificada')db[ri].ncs[ni].tsVerif=fh();recalcularEstadoInspeccion(ri);}
   else{db[ri].estadoMedida=e;if(e==='Verificada'){db[ri].fechaCierre=hoy();db[ri].tsVerif=fh();}}
-  sv();eS({...db[ri],_update:true});rHN();
+  sv();rHN();
+  // Snapshot profundo para Sheets: aísla el envío de db[ri], así el archivado
+  // (que puede borrar las fotos) no vacía el objeto a mitad de serialización.
+  const snap=JSON.parse(JSON.stringify(db[ri]));delete snap._archivando;
+  await eS({...snap,_update:true});
   intentarArchivarEnDrive(ri);
 }
 
@@ -2722,13 +2733,28 @@ function gCV(ri,ni,gi){
   const com=document.getElementById('vc'+gi).value;
   if(ni>=0)db[ri].ncs[ni].comentario=com;else db[ri].comentarioVerif=com;
   recalcularEstadoInspeccion(ri);
-  sv();eS({...db[ri],_update:true});rHN();
+  sv();
+  const snap=JSON.parse(JSON.stringify(db[ri]));delete snap._archivando;
+  eS({...snap,_update:true});rHN();
   alert('Comentario y evidencia guardados.');
 }
 
 function elNC(ri,ni){
-  if(ni>=0)db[ri].ncs.splice(ni,1);else db.splice(ri,1);
-  sv();rHN();rH();
+  if(ni>=0){
+    db[ri].ncs.splice(ni,1);
+    // Eliminar una NC puede dejar el informe con todas las restantes verificadas
+    // (o sin ninguna NC): hay que recalcular el estado y, si quedó cerrado,
+    // archivarlo — antes quedaba "Pendiente" en falso.
+    recalcularEstadoInspeccion(ri);
+    sv();
+    const snap=JSON.parse(JSON.stringify(db[ri]));delete snap._archivando;
+    eS({...snap,_update:true});
+    intentarArchivarEnDrive(ri);
+  }else{
+    db.splice(ri,1);
+    sv();
+  }
+  rHN();rH();
 }
 
 // HISTORIAL INFORMES
@@ -2752,6 +2778,7 @@ function rHI(){
     (r.razonSocial||'').toLowerCase().includes(q) ||
     (r.resumen||'').toLowerCase().includes(q) ||
     (r.tipo==='Inspeccion'&&tituloChecklist(r.clKey).toLowerCase().includes(q)) ||
+    (r.titulo||'').toLowerCase().includes(q) ||
     (r.fecha||'').toLowerCase().includes(q)
   );
   if(!lista.length){cont.innerHTML='<div style="font-size:13px;color:var(--muted);padding:8px 0">Sin registros</div>';return;}
@@ -2760,7 +2787,7 @@ function rHI(){
     const ri=db.indexOf(r);
     const[bg,col,lb]=cfg[r.tipo]||['#F1EFE8','#444','Registro'];
     const nc=(r.tipo==='Inspeccion'&&r.ncs)?r.ncs.length:0;
-    const tChk=r.tipo==='Inspeccion'?tituloChecklist(r.clKey):'';
+    const tChk=r.tipo==='Inspeccion'?tituloChecklist(r.clKey):r.tipo==='Hallazgo'?(r.titulo||''):'';
     const lugar=r.area+(r.seccion?' — '+r.seccion:'');
     const cerrado=estaCerrado(r);
     return `<div class="hi">
@@ -2920,7 +2947,7 @@ function verInforme(ri,origen){
   }
 
   if(r.tipo==='Hallazgo'){
-    html+=`<div class="fl">Descripción del hallazgo</div><div style="margin-bottom:8px">${r.descripcion||'-'}</div>
+    html+=`${r.titulo?`<div class="fl">Título</div><div style="margin-bottom:8px;font-weight:600">${r.titulo}</div>`:''}<div class="fl">Descripción del hallazgo</div><div style="margin-bottom:8px">${r.descripcion||'-'}</div>
     <div class="fl">Propuesta de mejora</div><div style="margin-bottom:8px">${r.propuestaMejora||'Sin propuesta registrada'}</div>
     <div class="fl">Estado</div><div style="margin-bottom:8px">${r.estadoMedida||'Pendiente'}${r.tsVerif?' — Cerrado: '+r.tsVerif:''}</div>`;
     if(r.comentarioVerif) html+=`<div class="fl">Comentario de cierre</div><div style="margin-bottom:8px">${r.comentarioVerif}</div>`;
@@ -3367,6 +3394,7 @@ function construirDocPDF(tipo,d){
   }
   if(tipo==='hallazgo'){
     y+=3;aS('DESCRIPCION DEL HALLAZGO');
+    if(d.titulo) aF('Título',d.titulo);
     aT('',d.descripcion);
     if((d.fotosHallazgo||[]).length){
       y+=2;
@@ -3502,7 +3530,8 @@ function construirDocPDF(tipo,d){
 
   // Dibuja un bloque de firma (línea + nombre + cargo + registro opcional + imagen
   // superpuesta) centrado en centroX. Reutilizable para 1 o 2 firmantes.
-  function dibujarBloqueFirma(centroX, nombre, cargo, registroTxt, firmaImg){
+  function dibujarBloqueFirma(centroX, nombre, cargo, registroTxt, firmaImg, maxW, maxH){
+    maxW = maxW || 110; maxH = maxH || 50; // tamaño por defecto: firma única centrada
     doc.setDrawColor(180,180,180);
     doc.line(centroX-30, lineY, centroX+30, lineY);
     let ty = lineY + 4;
@@ -3518,7 +3547,6 @@ function construirDocPDF(tipo,d){
     // como una firma real estampada "delante del texto". Respeta la proporción
     // real de la imagen (evita que se vea estirada o achatada).
     if(firmaImg){
-      const maxW = 44, maxH = 20;
       let iw=1, ih=1;
       try{ const props = doc.getImageProperties(firmaImg); iw=props.width; ih=props.height; }catch(e){}
       const ratio = iw/ih || 2.3;
@@ -3534,8 +3562,8 @@ function construirDocPDF(tipo,d){
   const regTxt = (usr.registro||d.registro) ? ('Reg. '+san(usr.registro||d.registro||'')) : '';
   if(tipo==='caminata' && d.firmaTercero){
     // Dos firmantes lado a lado: quien inspecciona (izquierda) y quien acompaña (derecha)
-    dibujarBloqueFirma(cx-48, usr.nombre||d.inspector||'', usr.cargo||d.cargo||'', regTxt, firma);
-    dibujarBloqueFirma(cx+48, d.firmaTerceroNombre||'', d.firmaTerceroCargo||'', '', d.firmaTercero);
+    dibujarBloqueFirma(cx-47, usr.nombre||d.inspector||'', usr.cargo||d.cargo||'', regTxt, firma, 84, 38);
+    dibujarBloqueFirma(cx+47, d.firmaTerceroNombre||'', d.firmaTerceroCargo||'', '', d.firmaTercero, 84, 38);
   }else{
     dibujarBloqueFirma(cx, usr.nombre||d.inspector||'', usr.cargo||d.cargo||'', regTxt, firma);
   }
@@ -3568,7 +3596,7 @@ function expCSV(){
   let O='Folio\tFecha\tHora\tRazon Social\tArea\tSeccion\tInspector\tCargo\tPuesto\tTipo Conducta\tCategoria\tDescripcion\tAccion Tomada\tEstado\tVerificado\n';
   let C='Folio\tFecha\tHora\tTipo\tRazon Social\tArea\tSeccion\tInspector\tDescripcion\tGravedad\tConsecuencia\tEncargado\tPlazo\tAccion Inm\tMedida Corr\tEstado\tVerificado\n';
   let CAM='Folio\tFecha\tHora\tRazon Social\tArea\tTipo Caminata\tInspector\tCargo\tCumple\tNo Cumple\tNo Aplica\tEstado\tVerificado\tObservaciones\n';
-  let HAL='Folio\tFecha\tHora\tRazon Social\tArea\tSeccion\tInspector\tCargo\tDescripcion\tN Fotos Hallazgo\tPropuesta Mejora\tN Fotos Propuesta\tEstado\tVerificado\n';
+  let HAL='Folio\tFecha\tHora\tRazon Social\tArea\tSeccion\tInspector\tCargo\tTitulo\tDescripcion\tN Fotos Hallazgo\tPropuesta Mejora\tN Fotos Propuesta\tEstado\tVerificado\n';
   const c=v=>(v||'').toString().replace(/\t/g,' ').replace(/\n/g,' ');
   db.forEach(r=>{
     if(r.tipo==='Inspeccion'){
@@ -3590,7 +3618,7 @@ function expCSV(){
       CAM+=[c(r.folio),c(r.fecha),c(r.hora),c(r.razonSocial),c(r.area),c(r.tipoCaminata),c(r.inspector),c(r.cargo),cumple,noCumple,noAplica,c(r.estadoMedida),c(r.tsVerif),c(r.obs)].join(sep)+'\n';
       (r.ncs||[]).forEach(n=>N+=[c(r.folio),c(r.fecha),c(r.area),c(r.inspector),c(n.item||n.it),c(n.cat),c(n.riesgo),c(n.respEjec||n.re),c(n.encargado||n.enc),c(n.plazo),c(n.comentario||n.com),c(n.estado),c(n.tsVerif||n.tv)].join(sep)+'\n');
     }
-    if(r.tipo==='Hallazgo') HAL+=[c(r.folio),c(r.fecha),c(r.hora),c(r.razonSocial),c(r.area),c(r.seccion),c(r.inspector),c(r.cargo),c(r.descripcion),(r.fotosHallazgo||[]).length,c(r.propuestaMejora),(r.fotosPropuesta||[]).length,c(r.estadoMedida),c(r.tsVerif)].join(sep)+'\n';
+    if(r.tipo==='Hallazgo') HAL+=[c(r.folio),c(r.fecha),c(r.hora),c(r.razonSocial),c(r.area),c(r.seccion),c(r.inspector),c(r.cargo),c(r.titulo),c(r.descripcion),(r.fotosHallazgo||[]).length,c(r.propuestaMejora),(r.fotosPropuesta||[]).length,c(r.estadoMedida),c(r.tsVerif)].join(sep)+'\n';
   });
   const dl=(n,ct)=>{const b=new Blob([B+ct],{type:'text/csv;charset=utf-8;'});const a=document.createElement('a');a.href=URL.createObjectURL(b);a.download=n;document.body.appendChild(a);a.click();document.body.removeChild(a);};
   dl('DAP_Inspecciones.csv',I);
@@ -4016,6 +4044,7 @@ function iHal(){
   if(!resuelto.area){alert('Completa el área');return;}
   halArea=resuelto.area; halSeccion=resuelto.seccion;
   halFotosHallazgo=[]; halFotosPropuesta=[];
+  document.getElementById('hal-titulo').value='';
   document.getElementById('hal-desc').value='';
   document.getElementById('hal-propuesta').value='';
   document.getElementById('hal-foto-hallazgo-lbl').textContent='Adjuntar foto(s) del hallazgo';
@@ -4058,6 +4087,7 @@ function fHal(sinPDF){
   if(!usuarioActivo){alert('Configura tu perfil primero');gt('s-usuarios');return;}
   const desc=document.getElementById('hal-desc').value.trim();
   if(!desc){alert('Describe el hallazgo antes de guardar');return;}
+  const titulo=document.getElementById('hal-titulo').value.trim();
   const r={
     tipo:'Hallazgo',
     folio:cnt('Hallazgo'),
@@ -4069,11 +4099,12 @@ function fHal(sinPDF){
     inspector:usuarioActivo.nombre,
     cargo:usuarioActivo.cargo||'',
     registro:usuarioActivo.registro||'',
+    titulo:titulo,
     descripcion:desc,
     fotosHallazgo:halFotosHallazgo.slice(),
     propuestaMejora:document.getElementById('hal-propuesta').value.trim(),
     fotosPropuesta:halFotosPropuesta.slice(),
-    resumen:desc.substring(0,60),
+    resumen:titulo||desc.substring(0,60),
     estadoMedida:'Pendiente', fechaCierre:'', tsVerif:'', fotoVerif:null,
     ts:Date.now()
   };
