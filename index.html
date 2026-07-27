@@ -1015,8 +1015,10 @@ function compress(file,cb){
       const d=cv.toDataURL('image/jpeg',0.85);
       cb(d,Math.round(file.size/1024),Math.round((d.length*0.75)/1024));
     };
+    img.onerror=()=>{ alert('No se pudo procesar esa imagen. Puede estar dañada o en un formato que el navegador no reconoce (ej. HEIC). Prueba con otra foto o cámbiala a JPG.'); };
     img.src=ev.target.result;
   };
+  r.onerror=()=>{ alert('No se pudo leer el archivo de imagen. Intenta de nuevo.'); };
   r.readAsDataURL(file);
 }
 
@@ -1053,7 +1055,8 @@ function pinKey(k){
 
 // MIGRAR DATOS
 function mig(){
-  const ac=JSON.parse(localStorage.getItem(DK)||'[]');
+  let ac; try{ ac=JSON.parse(localStorage.getItem(DK)||'[]'); }catch(e){ ac=[]; }
+  if(!Array.isArray(ac)) ac=[];
   const ts=new Set(ac.map(r=>r.ts));let m=0;
   ['dap-db-v2','dap-db-v3','dap-db-v4'].forEach(k=>{
     try{JSON.parse(localStorage.getItem(k)||'[]').forEach(r=>{if(r.ts&&!ts.has(r.ts)){ac.push(r);ts.add(r.ts);m++;}});}catch(e){}
@@ -1068,10 +1071,25 @@ function mig(){
   }
 }
 
+function parseSeguro(clave){
+  // Si el localStorage quedó corrupto (ej. escritura cortada por batería), un
+  // JSON.parse sin protección dejaría la app en pantalla en blanco sin arranque.
+  // Acá se preserva el dato crudo en una clave _corrupto por si se puede rescatar
+  // manualmente, y se arranca con arreglo vacío en vez de romper.
+  const raw=localStorage.getItem(clave);
+  if(!raw) return [];
+  try{ return JSON.parse(raw); }
+  catch(e){
+    try{ localStorage.setItem(clave+'_corrupto_'+Date.now(), raw); }catch(_){}
+    alert('Aviso: los datos guardados de "'+clave+'" no se pudieron leer y pueden estar dañados. La app abrió sin ellos. Se guardó una copia del dato original por si se puede recuperar.');
+    return [];
+  }
+}
+
 function ld(){
   mig();
-  db=JSON.parse(localStorage.getItem(DK)||'[]');
-  usuarios=JSON.parse(localStorage.getItem(UK)||'[]');
+  db=parseSeguro(DK);
+  usuarios=parseSeguro(UK);
   const uid=localStorage.getItem(ACK);
   usuarioActivo=uid?usuarios.find(u=>u.id===uid):null;
   if(!usuarioActivo&&usuarios.length>0) usuarioActivo=usuarios[0];
@@ -1081,8 +1099,25 @@ function ld(){
   document.getElementById('hdr-logo').src='data:image/jpeg;base64,'+LOGO_B64;
 }
 
-function sv(){localStorage.setItem(DK,JSON.stringify(db));}
-function svU(){localStorage.setItem(UK,JSON.stringify(usuarios));}
+function sv(){
+  try{
+    localStorage.setItem(DK,JSON.stringify(db));
+  }catch(e){
+    // localStorage lleno (QuotaExceededError). Antes esto se perdía en silencio
+    // y el registro no se guardaba sin que nadie se enterara. Ahora se avisa.
+    if(e&&(e.name==='QuotaExceededError'||e.code===22||e.code===1014)){
+      alert('⚠ El almacenamiento del dispositivo está lleno.\n\nLo último puede NO haberse guardado. Para liberar espacio:\n1) Cierra informes pendientes (al quedar 100% verificados suben a Drive y liberan sus fotos).\n2) O exporta un respaldo (Usuarios → Respaldo de registros) y luego elimina informes ya archivados.\n\nNo crees nuevos registros hasta liberar espacio.');
+    }else{
+      alert('No se pudo guardar en el dispositivo: '+(e&&e.message||e));
+    }
+    return false;
+  }
+  return true;
+}
+function svU(){
+  try{ localStorage.setItem(UK,JSON.stringify(usuarios)); return true; }
+  catch(e){ alert('No se pudo guardar el perfil: almacenamiento lleno o no disponible.'); return false; }
+}
 
 // Iniciales del inspector activo, para prefijar folios y que no colisionen entre
 // dispositivos. "Nicolás Fuentes Sepúlveda" → "NFS". Se limita a 3 letras y se
@@ -1156,7 +1191,7 @@ function gt(id){
 
 // HOME
 function rH(){
-  db=JSON.parse(localStorage.getItem(DK)||'[]');
+  db=parseSeguro(DK);
   // Vista por usuario (si no es admin, filtra)
   const vista=getVistaDB();
   document.getElementById('s0').textContent=vista.length;
@@ -2508,7 +2543,18 @@ function enviarUltimoPorCorreo(){
 }
 
 function gSI(){if(extMode){extMode=false;const r=bRExt(cI.ncs);db.push(r);sv();eS(r);intentarArchivarEnDrive(db.length-1);gt('s-home');return;}if(camMode){camMode=false;const r=bRCam(cI.ncs);db.push(r);sv();eS(r);intentarArchivarEnDrive(db.length-1);gt('s-home');return;}const r=bRI();db.push(r);sv();eS(r);intentarArchivarEnDrive(db.length-1);gt('s-home');}
-function eInf(){if(extMode){extMode=false;const r=bRExt(cI.ncs);db.push(r);sv();eS(r);intentarArchivarEnDrive(db.length-1);gPDF('extintores',r);mostrarInformeListo('extintores',r);return;}if(camMode){camMode=false;const r=bRCam(cI.ncs);db.push(r);sv();eS(r);intentarArchivarEnDrive(db.length-1);gPDF('caminata',r);mostrarInformeListo('caminata',r);return;}const r=bRI();db.push(r);sv();eS(r);intentarArchivarEnDrive(db.length-1);gPDF('inspeccion',r);mostrarInformeListo('inspeccion',r);}
+// Evita que un doble toque accidental (o un toque mientras la app genera el PDF)
+// dispare dos veces la emisión y cree dos registros idénticos con folios
+// distintos. Devuelve false si hubo una emisión hace menos de 2,5s.
+let _ultimaEmision=0;
+function puedeEmitir(){
+  const ahora=Date.now();
+  if(ahora-_ultimaEmision<2500) return false;
+  _ultimaEmision=ahora;
+  return true;
+}
+
+function eInf(){if(!puedeEmitir())return;if(extMode){extMode=false;const r=bRExt(cI.ncs);db.push(r);sv();eS(r);intentarArchivarEnDrive(db.length-1);gPDF('extintores',r);mostrarInformeListo('extintores',r);return;}if(camMode){camMode=false;const r=bRCam(cI.ncs);db.push(r);sv();eS(r);intentarArchivarEnDrive(db.length-1);gPDF('caminata',r);mostrarInformeListo('caminata',r);return;}const r=bRI();db.push(r);sv();eS(r);intentarArchivarEnDrive(db.length-1);gPDF('inspeccion',r);mostrarInformeListo('inspeccion',r);}
 
 // FINALIZAR OBSERVACION
 function fObs(sinPDF){
@@ -2516,6 +2562,7 @@ function fObs(sinPDF){
   const{area:obsArea,seccion:obsSeccion}=resolverAreaSeccion('obs');
   const d={fecha:document.getElementById('obs-fecha').value,hora:document.getElementById('obs-hora').value,area:obsArea,seccion:obsSeccion,razonSocial:document.getElementById('obs-rs').value,puesto:document.getElementById('obs-puesto').value,tipo_conducta:otp||'No especificado',cat:document.getElementById('obs-cat').value,desc:document.getElementById('obs-desc').value,accion:document.getElementById('obs-accion').value,foto:ofd};
   if(!d.fecha||!d.area){alert('Completa los campos requeridos');return;}
+  if(!sinPDF && !puedeEmitir()) return;
   const r={tipo:'Observacion',folio:cnt('Observacion'),fecha:d.fecha,hora:d.hora,area:d.area,razonSocial:d.razonSocial,inspector:usuarioActivo.nombre,cargo:usuarioActivo.cargo||'',registro:usuarioActivo.registro||'',resumen:d.tipo_conducta+' - '+d.cat,estadoMedida:'Pendiente',fechaCierre:'',tsVerif:'',fotoVerif:null,ts:Date.now(),...d};
   db.push(r);sv();eS(r);intentarArchivarEnDrive(db.length-1);
   if(!sinPDF){gPDF('observacion',r);mostrarInformeListo('observacion',r);}
@@ -2533,6 +2580,7 @@ function fCI(sinPDF){
   const{area:ciArea,seccion:ciSeccion}=resolverAreaSeccion('ci');
   const d={fecha:document.getElementById('ci-fecha').value,hora:document.getElementById('ci-hora').value,area:ciArea,seccion:ciSeccion,razonSocial:document.getElementById('ci-rs').value,consecuencia:document.getElementById('ci-consecuencia').value,riesgo:rci,riesgoColor:rcc,encargado:document.getElementById('ci-encargado').value,plazo:document.getElementById('ci-plazo').value,accionInmediata:document.getElementById('ci-accion-inm').value,medidaCorr:document.getElementById('ci-medida-prop').value};
   if(!d.fecha||!d.area){alert('Completa los campos requeridos');return;}
+  if(!sinPDF && !puedeEmitir()) return;
   if(tipo==='CondicionInsegura'){d.desc=document.getElementById('ci-desc-cond').value;const eqSel=document.getElementById('ci-equipo').value;d.equipo=eqSel==='__otro'?document.getElementById('ci-equipo-otro').value.trim():eqSel;d.foto=cifd;}
   else{d.desc=document.getElementById('ai-desc-cond').value;d.actividadEjec=document.getElementById('ai-actividad').value;d.cargoTrab=document.getElementById('ai-cargo-trab').value;d.estandar=document.getElementById('ai-estandar').value;d.intervencion=document.getElementById('ai-intervencion').value;d.foto=aifd;}
   const r={tipo,folio:cnt(tipo),fecha:d.fecha,hora:d.hora,area:d.area,razonSocial:d.razonSocial,inspector:usuarioActivo.nombre,cargo:usuarioActivo.cargo||'',registro:usuarioActivo.registro||'',resumen:(tipo==='CondicionInsegura'?'CI':'AI')+' - Riesgo '+d.riesgo+' - '+(d.desc||'').substring(0,40),nivelRiesgo:d.riesgo,estadoMedida:'Pendiente',fechaCierre:'',tsVerif:'',fotoVerif:null,ts:Date.now(),...d};
@@ -2823,7 +2871,13 @@ function rHI(){
   }).join('');
 }
 
-function elInf(ri){db.splice(ri,1);sv();rHI();rH();}
+function elInf(ri){
+  const r=db[ri];
+  if(r&&r.driveUrl){
+    if(!confirm('Este informe ya está archivado en Drive.\n\nAl eliminarlo del dispositivo, el PDF SEGUIRÁ en tu Drive (no se borra automáticamente por seguridad). Si también quieres quitarlo de Drive, hazlo manualmente desde la carpeta "DAP Informes SSO".\n\n¿Eliminar del dispositivo de todos modos?')) return;
+  }
+  db.splice(ri,1);sv();rHI();rH();
+}
 // Única fuente de verdad para deducir qué plantilla de PDF corresponde a un
 // registro. Antes esta lógica estaba duplicada en rPDF() y en
 // enviarInformePorCorreo() con cadenas de ternarios distintas, y ambas
@@ -2994,10 +3048,17 @@ function enviarDesdePreview(){
 async function eS(r){
   const d=document.getElementById('ssd'),t=document.getElementById('sst');
   if(d&&t){d.className='sdot pend';t.textContent='Sincronizando...';}
+  // B1: se envía una versión SIN fotos base64. El Apps Script nunca guardó las
+  // fotos en Sheets (solo cuenta cuántas hay), así que la fila queda idéntica,
+  // pero el payload pasa de varios MB a unos pocos KB. Esto hace la
+  // sincronización mucho más rápida y mucho menos propensa a fallar con la
+  // señal débil de un hangar. Las fotos completas siguen yendo a Drive por su
+  // propio camino (archivado del PDF), sin cambios.
+  const liviano=quitarFotosObj(r);
   try{
     const resp=await fetch(SHEETS_URL,{
       method:'POST',
-      body:JSON.stringify(r),
+      body:JSON.stringify(liviano),
       headers:{'Content-Type':'text/plain;charset=utf-8'},
       mode:'cors'
     });
@@ -3797,6 +3858,7 @@ function bRExt(ncsArr){
 function fExt(sinPDF){
   if(!usuarioActivo){alert('Configura tu perfil');return;}
   if(extList.length===0){alert('Agrega al menos un extintor antes de guardar');return;}
+  if(!sinPDF && !puedeEmitir()) return;
   extDatos={
     fecha:document.getElementById('ext-fecha').value,
     hora:document.getElementById('ext-hora').value,
@@ -4002,6 +4064,7 @@ function bRCam(ncsArr){
 
 function fCam(sinPDF) {
   if (!usuarioActivo) { alert('Configura tu perfil'); return; }
+  if(!sinPDF && !puedeEmitir()) return;
   camDatos = {
     fecha: document.getElementById('cam-fecha').value,
     hora: document.getElementById('cam-hora').value,
@@ -4087,6 +4150,7 @@ function fHal(sinPDF){
   if(!usuarioActivo){alert('Configura tu perfil primero');gt('s-usuarios');return;}
   const desc=document.getElementById('hal-desc').value.trim();
   if(!desc){alert('Describe el hallazgo antes de guardar');return;}
+  if(!sinPDF && !puedeEmitir()) return;
   const titulo=document.getElementById('hal-titulo').value.trim();
   const r={
     tipo:'Hallazgo',
