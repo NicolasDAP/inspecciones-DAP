@@ -2524,7 +2524,8 @@ function bRI(){
     foto:x.foto||null
   }));
   const clKey=cI.clKey||'';
-  return {tipo:'Inspeccion',folio:cnt('Inspeccion'),fecha:cI.f,hora:cI.h,area:cI.a,seccion:cI.sec,turno:cI.t,razonSocial:cI.rs,notasIni:cI.notas||'',inspector:usuarioActivo?usuarioActivo.nombre:'',cargo:usuarioActivo?usuarioActivo.cargo:'',registro:usuarioActivo?usuarioActivo.registro:'',resumen:`OK:${ok} NC:${nc} NA:${na}`,estadoMedida:nc>0?'Pendiente':'Cerrada',fechaCierre:'',tsVerif:'',fotoVerif:null,ts:Date.now(),clKey,clItems,ncs:cI.ncs.map(n=>({item:n.it||n.d||'',cat:n.cat,n:n.n||'',critico:n.critico||false,riesgo:n.riesgo,riesgoColor:n.rc,respEjec:n.re,encargado:n.enc,cargo:n.cargo,plazo:n.plazo,comentario:n.com,foto:n.foto,estado:n.estado,fotoVerif:null,tsVerif:''})),obs:document.getElementById('og').value};
+  const clNombre=clKey==='001B'?'Extintores':tituloChecklist(clKey)||'Inspección';
+  return {tipo:'Inspeccion',folio:cnt('Inspeccion'),fecha:cI.f,hora:cI.h,area:cI.a,seccion:cI.sec,turno:cI.t,razonSocial:cI.rs,notasIni:cI.notas||'',inspector:usuarioActivo?usuarioActivo.nombre:'',cargo:usuarioActivo?usuarioActivo.cargo:'',registro:usuarioActivo?usuarioActivo.registro:'',resumen:`OK:${ok} NC:${nc} NA:${na}`,estadoMedida:nc>0?'Pendiente':'Cerrada',fechaCierre:'',tsVerif:'',fotoVerif:null,ts:Date.now(),clKey,clNombre,clItems,ncs:cI.ncs.map(n=>({item:n.it||n.d||'',cat:n.cat,n:n.n||'',critico:n.critico||false,riesgo:n.riesgo,riesgoColor:n.rc,respEjec:n.re,encargado:n.enc,cargo:n.cargo,plazo:n.plazo,comentario:n.com,foto:n.foto,estado:n.estado,fotoVerif:null,tsVerif:''})),obs:document.getElementById('og').value};
 }
 
 let ultimoRegistro=null, ultimoTipoPDF=null;
@@ -3054,6 +3055,12 @@ async function eS(r){
   // sincronización mucho más rápida y mucho menos propensa a fallar con la
   // señal débil de un hangar. Las fotos completas siguen yendo a Drive por su
   // propio camino (archivado del PDF), sin cambios.
+  // Inspecciones viejas (guardadas antes de existir clNombre) no traen el nombre
+  // del checklist. Se resuelve al vuelo desde clKey para que al reenviarlas o
+  // actualizarlas también aparezca el checklist en Sheets.
+  if(r&&r.tipo==='Inspeccion'&&!r.clNombre){
+    r.clNombre=r.clKey==='001B'?'Extintores':(tituloChecklist(r.clKey)||'Inspección');
+  }
   const liviano=quitarFotosObj(r);
   try{
     const resp=await fetch(SHEETS_URL,{
@@ -3652,7 +3659,7 @@ function generarPDFBase64(tipo,d){
 function expCSV(){
   if(!db.length){alert('Sin registros para exportar');return;}
   const B='\uFEFF',sep='\t';
-  let I='Folio\tFecha\tHora\tRazon Social\tArea\tSeccion\tTurno\tInspector\tCargo\tOK\tNC\tNA\tEstado\tVerificado\tObservaciones\n';
+  let I='Folio\tChecklist\tFecha\tHora\tRazon Social\tArea\tSeccion\tTurno\tInspector\tCargo\tOK\tNC\tNA\tEstado\tVerificado\tObservaciones\n';
   let N='Folio Insp\tFecha\tArea\tInspector\tItem NC\tCategoria\tNivel Riesgo\tResp Ejecucion\tEncargado\tPlazo\tComentario\tEstado\tVerificado\n';
   let O='Folio\tFecha\tHora\tRazon Social\tArea\tSeccion\tInspector\tCargo\tPuesto\tTipo Conducta\tCategoria\tDescripcion\tAccion Tomada\tEstado\tVerificado\n';
   let C='Folio\tFecha\tHora\tTipo\tRazon Social\tArea\tSeccion\tInspector\tDescripcion\tGravedad\tConsecuencia\tEncargado\tPlazo\tAccion Inm\tMedida Corr\tEstado\tVerificado\n';
@@ -3668,7 +3675,7 @@ function expCSV(){
       }else{
         const cl=r.clItems||[];ok=cl.filter(x=>x.resp==='OK').length;nc=cl.filter(x=>x.resp==='NC').length;na=cl.filter(x=>x.resp==='NA').length;
       }
-      I+=[c(r.folio),c(r.fecha),c(r.hora),c(r.razonSocial),c(r.area),c(r.seccion),c(r.turno),c(r.inspector),c(r.cargo),ok,nc,na,c(r.estadoMedida),c(r.tsVerif),c(r.obs)].join(sep)+'\n';
+      I+=[c(r.folio),c(r.clNombre||(r.clKey==='001B'?'Extintores':'Inspección')),c(r.fecha),c(r.hora),c(r.razonSocial),c(r.area),c(r.seccion),c(r.turno),c(r.inspector),c(r.cargo),ok,nc,na,c(r.estadoMedida),c(r.tsVerif),c(r.obs)].join(sep)+'\n';
       (r.ncs||[]).forEach(n=>N+=[c(r.folio),c(r.fecha),c(r.area),c(r.inspector),c(n.item||n.it),c(n.cat),c(n.riesgo),c(n.respEjec||n.re),c(n.encargado||n.enc),c(n.plazo),c(n.comentario||n.com),c(n.estado),c(n.tsVerif||n.tv)].join(sep)+'\n');
     }
     if(r.tipo==='Observacion') O+=[c(r.folio),c(r.fecha),c(r.hora),c(r.razonSocial),c(r.area),c(r.seccion),c(r.inspector),c(r.cargo),c(r.puesto),c(r.tipo_conducta||r.tipo),c(r.cat),c(r.desc),c(r.accion),c(r.estadoMedida),c(r.tsVerif)].join(sep)+'\n';
@@ -3845,7 +3852,7 @@ function buildExtNCs(){
 function bRExt(ncsArr){
   const totNC=(ncsArr||[]).length;
   return {
-    tipo:'Inspeccion',clKey:'001B',folio:cnt('Inspeccion'),
+    tipo:'Inspeccion',clKey:'001B',clNombre:'Extintores',folio:cnt('Inspeccion'),
     fecha:extDatos.fecha,hora:extDatos.hora,area:extDatos.area,razonSocial:extDatos.rs,
     inspector:usuarioActivo.nombre,cargo:usuarioActivo.cargo||'',registro:usuarioActivo.registro||'',
     extList:extDatos.extList,notasIni:extDatos.notas,obs:extDatos.obs,
