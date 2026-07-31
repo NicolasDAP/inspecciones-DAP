@@ -306,6 +306,7 @@ textarea{min-height:74px;resize:vertical}
   <div id="acceso-catalogo-areas" style="display:none">
     <div class="divider"></div>
     <button class="btn btn-black" onclick="gt('s-catalogo-areas')"><i class="ti ti-map-2"></i> Catálogo de áreas</button>
+    <button class="btn btn-black" style="margin-top:8px" onclick="gt('s-catalogo-ext')"><i class="ti ti-fire-extinguisher"></i> Catálogo de extintores</button>
   </div>
   <div id="acceso-respaldo-registros" style="display:none">
     <div class="divider"></div>
@@ -416,6 +417,20 @@ textarea{min-height:74px;resize:vertical}
 
   <button class="btn btn-orange" onclick="aplicarImportacion()"><i class="ti ti-check"></i> Confirmar importación</button>
   <button class="btn btn-sec" onclick="cancelarImportacion()">Cancelar</button>
+</div>
+
+<!-- CATÁLOGO DE EXTINTORES (solo admin) -->
+<div id="s-catalogo-ext" class="scr">
+  <button class="btn-sm" onclick="gt('s-usuarios')" style="margin-bottom:14px"><i class="ti ti-arrow-left"></i> Usuarios</button>
+  <div class="page-title">Catálogo de extintores</div>
+  <div style="font-size:13px;color:var(--muted);margin-bottom:14px">Los extintores registrados aquí aparecen listos al iniciar una inspección de su área. Se guardan solos cuando agregas uno nuevo durante una inspección.</div>
+  <div id="cat-ext-body"></div>
+  <div class="divider"></div>
+  <div style="display:flex;gap:8px">
+    <button class="btn-sm" style="flex:1" onclick="exportarCatExt()"><i class="ti ti-download"></i> Exportar</button>
+    <button class="btn-sm" style="flex:1;background:#FEF0E8;color:var(--orange)" onclick="document.getElementById('cat-ext-import-input').click()"><i class="ti ti-upload"></i> Importar</button>
+  </div>
+  <input type="file" id="cat-ext-import-input" accept=".json" style="display:none" onchange="importarCatExt(this)">
 </div>
 
 <!-- CORREOS FRECUENTES (solo admin) -->
@@ -702,8 +717,12 @@ textarea{min-height:74px;resize:vertical}
 <div id="s-ext-frm" class="scr">
   <button class="btn-sm" onclick="gt('s-ext-cl')" style="margin-bottom:12px"><i class="ti ti-arrow-left"></i> Volver a lista</button>
   <div class="page-title" id="ext-frm-title">Nuevo extintor</div>
-  <label class="fl">N° / ID del extintor</label>
-  <input type="text" id="ef-num" placeholder="Ej: EXT-001">
+  <label class="fl">Identificador del extintor</label>
+  <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px">
+    <span id="ef-id-prefijo" style="font-weight:800;font-size:15px;color:var(--text);background:var(--surface2);padding:9px 10px;border-radius:9px;white-space:nowrap">EXT-___-</span>
+    <input type="text" id="ef-num" placeholder="001" maxlength="6" style="flex:1;margin-bottom:0;font-weight:700" oninput="actualizarIdPreview()">
+  </div>
+  <div style="font-size:11px;color:var(--muted);margin-bottom:12px">ID completo: <span id="ef-id-full" style="font-weight:700;color:var(--orange)">—</span></div>
   <label class="fl">Área / Ubicación específica</label>
   <input type="text" id="ef-ubic" placeholder="Ej: Hangar nave 2, junto a puerta norte">
   <label class="fl">Tipo de agente</label>
@@ -1232,6 +1251,7 @@ function ld(){
   if(!usuarioActivo&&usuarios.length>0) usuarioActivo=usuarios[0];
   cargarCatAreas();
   cargarCatCorreos();
+  cargarCatExtintores();
   // Set logo
   document.getElementById('hdr-logo').src='data:image/jpeg;base64,'+LOGO_B64;
 }
@@ -1287,6 +1307,7 @@ function gt(id){
   if(id==='s-hist-inf')rHI();
   if(id==='s-config-alertas')rConfigAlertas();
   if(id==='s-catalogo-areas')rCatAreas();
+  if(id==='s-catalogo-ext')rCatExt();
   if(id==='s-cat-correos')rCatCorreos();
   if(id==='s-ins-init'){document.getElementById('ins-fecha').value=hoy();document.getElementById('ins-hora').value=hora();poblarSelectArea('ins-area');}
   if(id==='s-cl-menu')rClMenu();
@@ -1612,6 +1633,110 @@ function cargarCatCorreos(){
   guardarCatCorreos();
 }
 function guardarCatCorreos(){localStorage.setItem(CCK,JSON.stringify(CAT_CORREOS));}
+
+// ═══════════ CATÁLOGO DE EXTINTORES (datos fijos por extintor físico) ═══════════
+// Guarda lo que NO cambia mes a mes: número físico, área, ubicación, tipo, serie.
+// Las condiciones de cada inspección NO viven acá (son de cada inspección puntual).
+// Al iniciar una inspección de un área, se cargan sus extintores desde aquí.
+const CEXK='dap-cat-extintores';
+let CAT_EXTINTORES=[];
+function catExtUid(){return 'e'+Date.now().toString(36)+Math.random().toString(36).slice(2,6);}
+function cargarCatExtintores(){
+  const raw=localStorage.getItem(CEXK);
+  if(raw){ try{CAT_EXTINTORES=JSON.parse(raw)||[];}catch(e){CAT_EXTINTORES=[];} }
+  else CAT_EXTINTORES=[];
+}
+function guardarCatExtintores(){
+  try{ localStorage.setItem(CEXK,JSON.stringify(CAT_EXTINTORES)); return true; }
+  catch(e){ alert('No se pudo guardar el catálogo de extintores: almacenamiento lleno.'); return false; }
+}
+// Devuelve los extintores del catálogo que pertenecen a un área dada.
+function extintoresDeArea(nombreArea){
+  return CAT_EXTINTORES.filter(e=>e.area===nombreArea);
+}
+// Busca un extintor del catálogo por su número físico dentro de un área
+// (evita duplicados: el mismo número en la misma área es el mismo extintor).
+function buscarExtCatalogo(area,numFisico){
+  return CAT_EXTINTORES.find(e=>e.area===area && String(e.numFisico)===String(numFisico));
+}
+// Agrega o actualiza un extintor en el catálogo. Devuelve el registro guardado.
+function upsertExtCatalogo(datos){
+  const existente=buscarExtCatalogo(datos.area,datos.numFisico);
+  if(existente){
+    Object.assign(existente,datos);
+    guardarCatExtintores();
+    return existente;
+  }
+  const nuevo={id:catExtUid(),...datos};
+  CAT_EXTINTORES.push(nuevo);
+  guardarCatExtintores();
+  return nuevo;
+}
+
+// Pantalla de administración: lista los extintores del catálogo agrupados por área.
+function rCatExt(){
+  cargarCatExtintores();
+  const cont=document.getElementById('cat-ext-body');
+  if(!CAT_EXTINTORES.length){
+    cont.innerHTML='<div style="font-size:13px;color:var(--muted);padding:8px 0">Sin extintores en el catálogo todavía. Se irán agregando solos a medida que registres extintores en las inspecciones.</div>';
+    return;
+  }
+  // Agrupar por área
+  const porArea={};
+  CAT_EXTINTORES.forEach(e=>{ (porArea[e.area||'Sin área']=porArea[e.area||'Sin área']||[]).push(e); });
+  cont.innerHTML=Object.keys(porArea).sort().map(area=>{
+    const lista=porArea[area].slice().sort((a,b)=>String(a.numFisico).localeCompare(String(b.numFisico),undefined,{numeric:true}));
+    return `<div style="margin-bottom:16px">
+      <div style="font-size:13px;font-weight:800;color:var(--text);margin-bottom:6px;padding-bottom:4px;border-bottom:2px solid var(--border)">${area} <span style="font-weight:400;color:var(--muted)">(${lista.length})</span></div>
+      ${lista.map(e=>`<div class="user-item" style="align-items:center">
+        <div style="flex:1">
+          <div style="font-size:14px;font-weight:700;color:var(--text)">${e.num||e.numFisico||'—'}</div>
+          <div style="font-size:12px;color:var(--muted)">${e.ubic||'Sin ubicación'}${e.tipo?' · '+e.tipo:''}</div>
+        </div>
+        <button class="btn-sm-danger" onclick="eliminarExtCatalogo('${e.id}')"><i class="ti ti-trash"></i></button>
+      </div>`).join('')}
+    </div>`;
+  }).join('');
+}
+
+function eliminarExtCatalogo(id){
+  const e=CAT_EXTINTORES.find(x=>x.id===id);
+  if(!e) return;
+  if(!confirm('¿Eliminar '+(e.num||e.numFisico||'este extintor')+' del catálogo?\n\nEsto no afecta inspecciones ya guardadas, solo el catálogo para futuras inspecciones.')) return;
+  CAT_EXTINTORES=CAT_EXTINTORES.filter(x=>x.id!==id);
+  guardarCatExtintores();
+  rCatExt();
+}
+
+function exportarCatExt(){
+  if(!CAT_EXTINTORES.length){alert('No hay extintores en el catálogo para exportar.');return;}
+  const data={_tipo:'DAP_cat_extintores',_version:1,_fecha:hoy()+' '+hora(),catalogo:CAT_EXTINTORES};
+  const blob=new Blob([JSON.stringify(data,null,2)],{type:'application/json'});
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement('a');a.href=url;a.download='DAP_catalogo_extintores.json';
+  document.body.appendChild(a);a.click();document.body.removeChild(a);
+  setTimeout(()=>URL.revokeObjectURL(url),2000);
+}
+
+function importarCatExt(inp){
+  if(!inp.files||!inp.files[0])return;
+  const reader=new FileReader();
+  reader.onload=e=>{
+    try{
+      const data=JSON.parse(e.target.result);
+      if(data._tipo!=='DAP_cat_extintores'||!Array.isArray(data.catalogo)) throw new Error('formato');
+      if(!confirm('El archivo contiene '+data.catalogo.length+' extintores.\n\nEsto REEMPLAZARÁ el catálogo de extintores actual. ¿Continuar?')){inp.value='';return;}
+      CAT_EXTINTORES=data.catalogo;
+      guardarCatExtintores();
+      rCatExt();
+      alert('Catálogo de extintores importado: '+data.catalogo.length+' extintores.');
+    }catch(err){
+      alert('El archivo no es un catálogo de extintores válido.');
+    }
+    inp.value='';
+  };
+  reader.readAsText(inp.files[0]);
+}
 function rCatCorreos(){
   cargarCatCorreos();
   const cont=document.getElementById('cat-correos-body');
@@ -1754,6 +1879,11 @@ function rCatAreas(){
         <div style="flex:1;font-size:14px;font-weight:600;color:var(--text)">${m.nombre}</div>
         <button class="btn-sm-danger" onclick="eliminarAreaMacro('${m.id}')"><i class="ti ti-trash"></i></button>
       </div>
+      <div style="display:flex;align-items:center;gap:8px;margin-top:8px;padding-left:4px">
+        <span style="font-size:12px;color:var(--muted)">Abreviatura para ID:</span>
+        <input type="text" value="${m.abrev||''}" maxlength="4" placeholder="ej. H1" onchange="setAbrevMacro('${m.id}',this.value)" style="width:70px;margin-bottom:0;font-size:13px;padding:6px 8px;text-transform:uppercase;font-weight:700;text-align:center">
+        <span style="font-size:11px;color:var(--muted)">(hasta 4 caracteres)</span>
+      </div>
       <div style="margin-top:8px;padding-left:4px">
         ${secs.map(s=>`<div style="display:flex;align-items:center;gap:8px;padding:4px 0;font-size:13px;color:var(--muted)">
           <i class="ti ti-corner-down-right" style="font-size:14px"></i>
@@ -1767,6 +1897,22 @@ function rCatAreas(){
       </div>
     </div>`;
   }).join('');
+}
+
+// Guarda la abreviatura de una macroárea (para armar identificadores de elementos).
+function setAbrevMacro(id,val){
+  const m=CAT_AREAS.macro.find(x=>x.id===id);
+  if(!m) return;
+  m.abrev=(val||'').trim().toUpperCase().replace(/[^A-Z0-9]/g,'').slice(0,4);
+  guardarCatAreas();
+  rCatAreas();
+}
+// Devuelve la abreviatura de una macroárea por su nombre (o las 3 primeras
+// letras del nombre si no tiene abreviatura definida, como respaldo).
+function abrevDeArea(nombreArea){
+  const m=CAT_AREAS.macro.find(x=>x.nombre===nombreArea);
+  if(m&&m.abrev) return m.abrev;
+  return (nombreArea||'').toUpperCase().replace(/[^A-Z0-9]/g,'').slice(0,3)||'XXX';
 }
 
 function agregarAreaMacro(){
@@ -3852,32 +3998,76 @@ const EXT_CONDS = [
   {id:'altura',    label:'Montaje correcto: parte superior a máx. 1,30 m del suelo'},
 ];
 
+// Prefijo de tipo para el identificador de cada elemento físico inspeccionado.
+// EXT = extintores, BOT = botiquines, etc. El área aporta la abreviatura del
+// medio (definida en el catálogo) y el número físico lo pone el usuario.
+// Resultado: EXT-H1-001, BOT-CAR-003.
+const PREFIJO_ELEMENTO={
+  '001B':'EXT',   // Extintores
+  'BOT':'BOT'     // Botiquines (cuando exista su checklist; ajustar clKey real)
+};
+
+// Arma el ID completo del elemento: PREFIJO-ABREVAREA-NUMERO.
+function armarIdElemento(prefijo, nombreArea, numero){
+  const ab=abrevDeArea(nombreArea);
+  const num=(numero||'').toString().trim();
+  return prefijo+'-'+ab+'-'+num;
+}
+
+// Actualiza en vivo el preview del ID mientras el usuario escribe el número.
+function actualizarIdPreview(){
+  const area=extAreaSesion||'';
+  const ab=area?abrevDeArea(area):'___';
+  const num=(document.getElementById('ef-num').value||'').trim();
+  const prefEl=document.getElementById('ef-id-prefijo');
+  const fullEl=document.getElementById('ef-id-full');
+  if(prefEl) prefEl.textContent='EXT-'+ab+'-';
+  if(fullEl) fullEl.textContent=num?('EXT-'+ab+'-'+num):'—';
+}
+
 let extList = [];
 let extEditIdx = null;
+let extAreaSesion = ''; // área de la tanda actual de extintores, para armar el ID
 
 function iExt(){
   if(!usuarioActivo){alert('Configura tu perfil primero');gt('s-usuarios');return;}
   const f=document.getElementById('ext-fecha').value;
   const a=resolverAreaSimple('ext-area','ext-area-otro');
   if(!f||!a){alert('Completa fecha y área');return;}
+  extAreaSesion=a;
   camMode=false; // por si quedó una Caminata a medio camino
-  extList=[];
+  // Precargar los extintores del catálogo de esta área. Cada uno arranca "sin
+  // inspeccionar" (sin condiciones marcadas); el usuario los recorre uno a uno.
+  const delCatalogo=extintoresDeArea(a);
+  extList=delCatalogo.map(e=>({
+    num:e.num, numFisico:e.numFisico, ubic:e.ubic, tipo:e.tipo,
+    serie:e.serie, peso:e.peso, prox:e.prox, obs:'',
+    conds:{}, _catId:e.id, _inspeccionado:false
+  }));
   rExtList();
   gt('s-ext-cl');
 }
 
+// Marca si un extintor de la lista ya fue inspeccionado (tiene condiciones).
+function extInspeccionado(e){
+  return e && e.conds && Object.keys(e.conds).length>0;
+}
+
 function rExtList(){
   const el=document.getElementById('ext-list');
-  document.getElementById('ext-count').textContent=extList.length+' extintor'+(extList.length!==1?'es':'');
+  const inspeccionados=extList.filter(extInspeccionado).length;
+  document.getElementById('ext-count').textContent=extList.length+' extintor'+(extList.length!==1?'es':'')+(extList.length?' — '+inspeccionados+' inspeccionado'+(inspeccionados!==1?'s':''):'');
   if(extList.length===0){
-    el.innerHTML='<div style="text-align:center;color:var(--muted);font-size:13px;padding:20px 0">Sin extintores registrados aún.<br>Toca "Agregar extintor" para comenzar.</div>';
+    el.innerHTML='<div style="text-align:center;color:var(--muted);font-size:13px;padding:20px 0">No hay extintores en el catálogo para esta área.<br>Toca "Agregar extintor" para registrar el primero.</div>';
     return;
   }
   el.innerHTML=extList.map((e,i)=>{
+    const insp=extInspeccionado(e);
     const ncs=EXT_CONDS.filter(c=>e.conds[c.id]==='NO').length;
-    const color=ncs>0?'var(--red)':(ncs===0&&Object.keys(e.conds).length>0?'var(--green)':'var(--muted)');
-    const label=ncs>0?ncs+' NC':(Object.keys(e.conds).length>0?'Conforme':'Sin evaluar');
-    return `<div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:12px;margin-bottom:8px">
+    const color=!insp?'var(--muted)':(ncs>0?'var(--red)':'var(--green)');
+    const label=!insp?'Sin inspeccionar':(ncs>0?ncs+' NC':'Conforme');
+    const borde=!insp?'var(--border)':(ncs>0?'var(--red)':'var(--green)');
+    return `<div style="background:var(--surface);border:1px solid ${borde};border-left:4px solid ${color};border-radius:12px;padding:12px;margin-bottom:8px">
       <div style="display:flex;justify-content:space-between;align-items:center">
         <div>
           <div style="font-weight:700;font-size:14px">${e.num||'Extintor '+(i+1)} <span style="font-size:11px;font-weight:400;color:var(--muted)">${e.tipo||''}</span></div>
@@ -3886,8 +4076,8 @@ function rExtList(){
         <span style="font-size:11px;font-weight:700;color:${color};background:${color}18;padding:3px 9px;border-radius:20px">${label}</span>
       </div>
       <div style="display:flex;gap:6px;margin-top:9px">
-        <button class="btn-sm" style="flex:1" onclick="editarExt(${i})"><i class="ti ti-pencil"></i> Editar</button>
-        <button class="btn-sm-danger" onclick="eliminarExt(${i})"><i class="ti ti-trash"></i></button>
+        <button class="btn-sm" style="flex:1${!insp?';background:var(--orange);color:#fff':''}" onclick="editarExt(${i})"><i class="ti ti-${insp?'pencil':'clipboard-check'}"></i> ${insp?'Editar':'Inspeccionar'}</button>
+        <button class="btn-sm-danger" onclick="eliminarExt(${i})"><i class="ti ti-x"></i></button>
       </div>
     </div>`;
   }).join('');
@@ -3898,6 +4088,7 @@ function abrirFrmExt(){
   document.getElementById('ext-frm-title').textContent='Nuevo extintor';
   ['ef-num','ef-ubic','ef-serie','ef-obs','ef-peso','ef-tipo','ef-prox'].forEach(id=>document.getElementById(id).value='');
   rCondsFrm({});
+  actualizarIdPreview();
   gt('s-ext-frm');
 }
 
@@ -3905,7 +4096,9 @@ function editarExt(idx){
   extEditIdx=idx;
   const e=extList[idx];
   document.getElementById('ext-frm-title').textContent='Editar extintor '+(idx+1);
-  document.getElementById('ef-num').value=e.num||'';
+  // Cargar solo el número físico; si es un extintor viejo sin numFisico, intentar
+  // extraer el número del ID completo, o dejar el ID tal cual como respaldo.
+  document.getElementById('ef-num').value=e.numFisico||(e.num&&e.num.includes('-')?e.num.split('-').pop():e.num||'');
   document.getElementById('ef-ubic').value=e.ubic||'';
   document.getElementById('ef-tipo').value=e.tipo||'';
   document.getElementById('ef-serie').value=e.serie||'';
@@ -3913,11 +4106,16 @@ function editarExt(idx){
   document.getElementById('ef-prox').value=e.prox||e.proxRec||e.proxMant||'';
   document.getElementById('ef-obs').value=e.obs||'';
   rCondsFrm(e.conds||{});
+  actualizarIdPreview();
   gt('s-ext-frm');
 }
 
 function eliminarExt(idx){
-  if(!confirm('¿Eliminar este extintor del registro?'))return;
+  const e=extList[idx];
+  const msg=e&&e._catId
+    ? '¿Quitar este extintor de la inspección de hoy?\n\nSeguirá en el catálogo para las próximas inspecciones — solo lo estás sacando de esta.'
+    : '¿Eliminar este extintor?';
+  if(!confirm(msg))return;
   extList.splice(idx,1);
   rExtList();
 }
@@ -3949,17 +4147,41 @@ function sExtCond(id,val,btn){
 }
 
 function guardarExt(){
+  const numFisico=document.getElementById('ef-num').value.trim();
+  const idCompleto=numFisico?armarIdElemento('EXT',extAreaSesion,numFisico):'';
+  const previo=extEditIdx!==null?extList[extEditIdx]:null;
   const ext={
-    num:document.getElementById('ef-num').value.trim(),
+    num:idCompleto,           // ID completo para mostrar en todos lados (EXT-H1-001)
+    numFisico:numFisico,      // solo el número, para poder re-editar sin perder el formato
     ubic:document.getElementById('ef-ubic').value.trim(),
     tipo:document.getElementById('ef-tipo').value,
     serie:document.getElementById('ef-serie').value.trim(),
     peso:document.getElementById('ef-peso').value,
     prox:document.getElementById('ef-prox').value,
     obs:document.getElementById('ef-obs').value.trim(),
-    conds:Object.assign({},window._extConds||{})
+    conds:Object.assign({},window._extConds||{}),
+    _catId:previo?previo._catId:null
   };
-  if(!ext.num&&!ext.ubic){alert('Ingresa al menos el N° o la ubicación del extintor');return;}
+  if(!numFisico&&!ext.ubic){alert('Ingresa al menos el número o la ubicación del extintor');return;}
+
+  // Datos fijos que definen al extintor en el catálogo (sin las condiciones del mes).
+  const datosFijos={numFisico:ext.numFisico,num:ext.num,area:extAreaSesion,ubic:ext.ubic,tipo:ext.tipo,serie:ext.serie,peso:ext.peso,prox:ext.prox};
+
+  if(!ext._catId){
+    // Extintor nuevo (no venía del catálogo) → se guarda automáticamente al catálogo.
+    const guardado=upsertExtCatalogo(datosFijos);
+    ext._catId=guardado.id;
+  }else if(previo){
+    // Extintor del catálogo: ver si se cambió algún dato fijo.
+    const cambio=previo.ubic!==ext.ubic||previo.tipo!==ext.tipo||previo.serie!==ext.serie||
+                 previo.peso!==ext.peso||previo.prox!==ext.prox||previo.numFisico!==ext.numFisico;
+    if(cambio){
+      if(confirm('Cambiaste datos fijos de este extintor (ubicación, tipo, etc.).\n\n¿Actualizar también el catálogo para las próximas inspecciones?\n\nAceptar = actualizar catálogo · Cancelar = solo esta inspección')){
+        upsertExtCatalogo(datosFijos);
+      }
+    }
+  }
+
   if(extEditIdx!==null){extList[extEditIdx]=ext;}
   else{extList.push(ext);}
   rExtList();
@@ -3972,7 +4194,7 @@ let extDatos=null;
 
 function buildExtNCs(){
   const arr=[];
-  extList.forEach((e,i)=>{
+  extList.filter(extInspeccionado).forEach((e,i)=>{
     const fails=EXT_CONDS.filter(c=>e.conds[c.id]==='NO');
     if(fails.length){
       arr.push({idx:'ext'+i,
@@ -4001,16 +4223,23 @@ function bRExt(ncsArr){
 
 function fExt(sinPDF){
   if(!usuarioActivo){alert('Configura tu perfil');return;}
-  if(extList.length===0){alert('Agrega al menos un extintor antes de guardar');return;}
+  if(extList.length===0){alert('No hay extintores para inspeccionar. Agrega al menos uno.');return;}
+  const inspeccionados=extList.filter(extInspeccionado);
+  if(inspeccionados.length===0){alert('Todavía no has inspeccionado ningún extintor. Entra a cada uno y marca sus condiciones.');return;}
+  // Aviso si quedan extintores del área sin inspeccionar.
+  const sinInsp=extList.length-inspeccionados.length;
+  if(sinInsp>0){
+    if(!confirm('Quedan '+sinInsp+' extintor'+(sinInsp!==1?'es':'')+' sin inspeccionar en esta área.\n\n¿Emitir el informe solo con los '+inspeccionados.length+' que sí inspeccionaste?\n\nAceptar = emitir con los inspeccionados · Cancelar = volver y completar')) return;
+  }
   if(!sinPDF && !puedeEmitir()) return;
   extDatos={
     fecha:document.getElementById('ext-fecha').value,
     hora:document.getElementById('ext-hora').value,
-    area:resolverAreaSimple('ext-area','ext-area-otro'),
+    area:extAreaSesion,
     rs:document.getElementById('ext-rs').value,
     notas:document.getElementById('ext-notas').value,
     obs:document.getElementById('ext-obs').value,
-    extList:extList.map(e=>({...e}))
+    extList:inspeccionados.map(e=>({...e})) // solo los inspeccionados entran al informe
   };
   const ncsArr=buildExtNCs();
   if(ncsArr.length>0&&!sinPDF){
