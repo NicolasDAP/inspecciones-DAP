@@ -650,7 +650,7 @@ textarea{min-height:74px;resize:vertical}
   <select id="obs-cat"><option value="">Seleccionar...</option><option>EPP — Uso correcto según la tarea</option><option>EPP — Condición o estado del EPP</option><option>Técnica de levantamiento / manejo de carga</option><option>Trabajo en altura — uso de arnés y anclaje</option><option>Orden y aseo durante la tarea</option><option>Uso correcto de herramientas</option><option>Operación de GSE y vehículos en plataforma</option><option>Conducción segura (cinturón, velocidad, celular)</option><option>Procedimiento de trabajo / ART aplicada</option><option>Señalización y demarcación de zonas</option><option>Segregación y manejo de sustancias peligrosas</option><option>Comunicación entre trabajadores (señalero, rigger)</option><option>Postura ergonómica en tareas repetitivas</option><option>Conducta positiva — práctica segura destacada</option><option>Otro</option></select>
   <label class="fl">Descripción</label><textarea id="obs-desc" placeholder="Describe la conducta observada..."></textarea>
   <label class="fl">Acción tomada en terreno</label><textarea id="obs-accion" placeholder="Conversación, corrección inmediata..."></textarea>
-  <div class="fbtn" onclick="document.getElementById('ofi').click()"><i class="ti ti-camera" style="font-size:21px"></i><span id="ofl">Adjuntar foto (opcional)</span></div>
+  <div class="fbtn" onclick="pedirFoto('ofi')"><i class="ti ti-camera" style="font-size:21px"></i><span id="ofl">Adjuntar foto (opcional)</span></div>
   <div id="ofi2"></div>
   <input type="file" id="ofi" accept="image/*" style="display:none" onchange="sFO(this)">
   <button class="btn btn-orange" onclick="fObs()"><i class="ti ti-file-text"></i> Emitir informe PDF</button>
@@ -820,7 +820,7 @@ textarea{min-height:74px;resize:vertical}
   <input type="text" id="hal-titulo" placeholder="Ej: Cable suelto en pasillo, Falta señalética..." maxlength="60">
   <label class="fl">Descripción de lo observado</label>
   <textarea id="hal-desc" placeholder="Describe la condición, evento o hallazgo detectado..." style="min-height:90px"></textarea>
-  <div class="fbtn" onclick="document.getElementById('hal-foto-hallazgo').click()"><i class="ti ti-camera" style="font-size:20px"></i><span id="hal-foto-hallazgo-lbl">Adjuntar foto(s) del hallazgo</span></div>
+  <div class="fbtn" onclick="pedirFoto('hal-foto-hallazgo')"><i class="ti ti-camera" style="font-size:20px"></i><span id="hal-foto-hallazgo-lbl">Adjuntar foto(s) del hallazgo</span></div>
   <div id="hal-foto-hallazgo-grid" style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:10px"></div>
   <input type="file" id="hal-foto-hallazgo" accept="image/*" multiple style="display:none" onchange="onHalFoto('hallazgo',this)">
 
@@ -828,7 +828,7 @@ textarea{min-height:74px;resize:vertical}
 
   <label class="fl">Propuesta de mejora</label>
   <textarea id="hal-propuesta" placeholder="Medida o mejora propuesta para corregir/prevenir..." style="min-height:90px"></textarea>
-  <div class="fbtn" onclick="document.getElementById('hal-foto-propuesta').click()"><i class="ti ti-camera" style="font-size:20px"></i><span id="hal-foto-propuesta-lbl">Adjuntar foto(s) de la propuesta (opcional)</span></div>
+  <div class="fbtn" onclick="pedirFoto('hal-foto-propuesta')"><i class="ti ti-camera" style="font-size:20px"></i><span id="hal-foto-propuesta-lbl">Adjuntar foto(s) de la propuesta (opcional)</span></div>
   <div id="hal-foto-propuesta-grid" style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:10px"></div>
   <input type="file" id="hal-foto-propuesta" accept="image/*" multiple style="display:none" onchange="onHalFoto('propuesta',this)">
 
@@ -881,7 +881,7 @@ textarea{min-height:74px;resize:vertical}
       <option>Herramienta manual</option><option>Equipo de protección</option><option value="__otro">Otro</option>
     </select>
     <input type="text" id="ci-equipo-otro" placeholder="Especifica el equipo o instalación..." style="display:none">
-    <div class="fbtn" onclick="document.getElementById('ci-foto-input').click()"><i class="ti ti-camera" style="font-size:21px"></i><span id="ci-foto-lbl">Adjuntar foto</span></div>
+    <div class="fbtn" onclick="pedirFoto('ci-foto-input')"><i class="ti ti-camera" style="font-size:21px"></i><span id="ci-foto-lbl">Adjuntar foto</span></div>
     <div id="ci-foto-info"></div>
     <input type="file" id="ci-foto-input" accept="image/*" style="display:none" onchange="sFCI(this)">
   </div>
@@ -912,7 +912,7 @@ textarea{min-height:74px;resize:vertical}
       <option>Se instruyó</option><option>Se corrigió in situ</option>
       <option>Se retiró del área</option><option>Sin intervención</option>
     </select>
-    <div class="fbtn" onclick="document.getElementById('ai-foto-input').click()"><i class="ti ti-camera" style="font-size:21px"></i><span id="ai-foto-lbl">Adjuntar foto (opcional)</span></div>
+    <div class="fbtn" onclick="pedirFoto('ai-foto-input')"><i class="ti ti-camera" style="font-size:21px"></i><span id="ai-foto-lbl">Adjuntar foto (opcional)</span></div>
     <div id="ai-foto-info"></div>
     <input type="file" id="ai-foto-input" accept="image/*" style="display:none" onchange="sFAI(this)">
   </div>
@@ -1063,6 +1063,38 @@ async function idbEstado(){
 }
 // FIN ETAPA 0 — INDEXEDDB. Nada de lo de arriba se usa aún.
 // ═══════════════════════════════════════════════════════════════════════════
+
+// Selector de origen de foto: cámara o galería. Muchos Android abren solo la
+// galería con un input sin 'capture', y solo la cámara con 'capture'. Este
+// helper deja elegir: setea el atributo capture al vuelo sobre el MISMO input
+// existente y lo dispara, sin tocar su onchange ni su handler (que ya funcionan
+// para todos los módulos). Un segundo argumento permite forzar un origen.
+function pedirFoto(inputId){
+  const inp=document.getElementById(inputId);
+  if(!inp) return;
+  // Overlay simple con dos opciones. Se arma y destruye al vuelo.
+  const ov=document.createElement('div');
+  ov.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:9999;display:flex;align-items:flex-end;justify-content:center';
+  ov.innerHTML=`
+    <div style="background:#fff;width:100%;max-width:480px;border-radius:16px 16px 0 0;padding:18px 16px 26px;font-family:inherit">
+      <div style="font-size:14px;font-weight:700;color:#1A1A1A;margin-bottom:14px;text-align:center">Agregar foto</div>
+      <button id="_pf_cam" class="btn btn-black" style="margin-bottom:8px"><i class="ti ti-camera"></i> Tomar con la cámara</button>
+      <button id="_pf_gal" class="btn btn-black" style="margin-bottom:8px"><i class="ti ti-photo"></i> Elegir del dispositivo</button>
+      <button id="_pf_can" class="btn btn-sec">Cancelar</button>
+    </div>`;
+  document.body.appendChild(ov);
+  const cerrar=()=>{ if(ov.parentNode) ov.parentNode.removeChild(ov); };
+  ov.addEventListener('click',(e)=>{ if(e.target===ov) cerrar(); });
+  document.getElementById('_pf_cam').onclick=()=>{
+    inp.setAttribute('capture','environment'); // fuerza cámara trasera
+    cerrar(); inp.click();
+  };
+  document.getElementById('_pf_gal').onclick=()=>{
+    inp.removeAttribute('capture'); // sin capture = selector de archivos/galería
+    cerrar(); inp.click();
+  };
+  document.getElementById('_pf_can').onclick=cerrar;
+}
 // (Constante CARGOS eliminada — ya no se usa "cargo del encargado", solo el nombre)
 const BGC={Tolerable:'#EAF3DE',Moderado:'#FAEEDA',Importante:'#FAECE7',Intolerable:'#FCEBEB'};
 const FGC={Tolerable:'#27500A',Moderado:'#633806',Importante:'#712B13',Intolerable:'#A32D2D'};
@@ -2419,7 +2451,7 @@ function rCL2(ck){
       </div>
       <div id="fotofield${x}" style="display:none;margin-top:4px">
         <input type="file" id="fotoinput${x}" accept="image/*" style="display:none" onchange="onFotoItem(${x},this)">
-        <button class="btn-sm" style="width:100%" onclick="document.getElementById('fotoinput${x}').click()"><i class="ti ti-camera"></i> Tomar / seleccionar foto</button>
+        <button class="btn-sm" style="width:100%" onclick="pedirFoto('fotoinput'+${x})"><i class="ti ti-camera"></i> Tomar / seleccionar foto</button>
         <div id="fotoprev${x}"></div>
       </div>`;
       html+=`</div>`;
@@ -2579,7 +2611,7 @@ function rNL(){
         <input type="date" id="pl${i}" value="${n.plazo||''}">
         <label class="fl">Comentario</label>
         <textarea id="co${i}" placeholder="Descripción adicional...">${n.com||''}</textarea>
-        <div class="fbtn" onclick="document.getElementById('nf${i}').click()"><i class="ti ti-camera" style="font-size:20px"></i><span id="nfl${i}">${n.foto?'Foto adjunta':'Adjuntar foto'}</span></div>
+        <div class="fbtn" onclick="pedirFoto('nf'+${i})"><i class="ti ti-camera" style="font-size:20px"></i><span id="nfl${i}">${n.foto?'Foto adjunta':'Adjuntar foto'}</span></div>
         <div id="nfi${i}"></div>
         <input type="file" id="nf${i}" accept="image/*" style="display:none" onchange="sFN(${i},this)">
         <button class="btn btn-orange" style="margin-top:4px" onclick="gNP(${i})"><i class="ti ti-check"></i> Guardar NC</button>
@@ -2779,7 +2811,7 @@ function rHN(){
         <label class="fl">Comentario de verificación</label>
         <textarea id="vc${gi}" placeholder="Descripción del cierre...">${n.comentario||''}</textarea>
         ${n.fotoVerif?`<div style="margin-bottom:10px"><img src="${n.fotoVerif}" style="max-width:100%;border-radius:9px;border:1px solid var(--border)"><div style="font-size:11px;color:var(--green);margin-top:3px">${n.tsVerif||''}</div></div>`:''}
-        <div class="fbtn" onclick="document.getElementById('vf${gi}').click()"><i class="ti ti-camera" style="font-size:20px"></i><span id="vfl${gi}">${n.fotoVerif?'Cambiar foto':'Adjuntar foto de evidencia'}</span></div>
+        <div class="fbtn" onclick="pedirFoto('vf'+${gi})"><i class="ti ti-camera" style="font-size:20px"></i><span id="vfl${gi}">${n.fotoVerif?'Cambiar foto':'Adjuntar foto de evidencia'}</span></div>
         <div id="vfi${gi}"></div>
         <input type="file" id="vf${gi}" accept="image/*" style="display:none" onchange="gEv(${n._ri},${n._ni},${gi},this)">
         <button class="btn btn-orange" style="margin-top:4px" onclick="gCV(${n._ri},${n._ni},${gi})"><i class="ti ti-check"></i> Guardar</button>
@@ -4095,7 +4127,7 @@ function iCam() {
     html += '</div>';
     html += '<div id="camfoto' + x + '" style="display:none;margin-top:3px">';
     html += '<input type="file" id="camfi' + x + '" accept="image/*" style="display:none" onchange="onCamFoto(' + x + ',this)">';
-    html += '<button class="btn-sm" style="width:100%" onclick="document.getElementById(`camfi' + x + '`).click()"><i class="ti ti-camera"></i> Tomar / seleccionar foto</button>';
+    html += '<button class="btn-sm" style="width:100%" onclick="pedirFoto(\'camfi' + x + '\')"><i class="ti ti-camera"></i> Tomar / seleccionar foto</button>';
     html += '<div id="camfp' + x + '"></div>';
     html += '</div></div>';
   });
